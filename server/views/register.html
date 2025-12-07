@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SecureChat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
+                    colors: {
+                        signal: {
+                            bg: '#121212',         
+                            surface: '#2C2C2C',    
+                            blue: '#2C6BED',        
+                            bluehover: '#3876F3',
+                            text: {
+                                main: '#F2F2F2',
+                                sub: '#848586',
+                            },
+                            danger: '#CC4040'
+                        }
+                    },
+                    animation: {
+                        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    },
+                    keyframes: {
+                        slideUp: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+        .htmx-request.htmx-indicator { opacity: 1; }
+    </style>
+</head>
+<body class="bg-signal-bg flex items-center justify-center min-h-screen font-sans antialiased">
+
+    <div id="auth-container" class="w-full max-w-md p-4">
+        {{template "partials/register" .}}
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,2 @@
+# exc6
+EXERCISE 6

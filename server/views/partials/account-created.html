@@ -1,0 +1,38 @@
+<article class="w-full max-w-md bg-signal-surface p-10 rounded-3xl shadow-2xl border border-white/5 text-center animate-slide-up">
+    <div class="mb-8 flex justify-center">
+        <div class="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center border border-green-500/20 animate-scale-in">
+            <svg class="w-12 h-12 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+            </svg>
+        </div>
+    </div>
+    
+    <header class="mb-6">
+        <h3 class="text-3xl font-bold text-signal-text-main mb-3">Account created!</h3>
+        <p class="text-signal-text-sub text-lg">Welcome to SecureChat</p>
+    </header>
+    
+    <div class="w-16 h-1 bg-gradient-to-r from-transparent via-signal-blue to-transparent mx-auto mb-8 opacity-50"></div>
+    
+    <p class="text-signal-text-sub mb-10 leading-relaxed">
+        Your account has been successfully registered. You can now sign in to start messaging securely.
+    </p>
+    
+    <a 
+        hx-get="/login-form" 
+        hx-target="#auth-container"
+        class="block w-full bg-signal-blue hover:bg-signal-bluehover text-white font-bold py-3.5 px-8 rounded-xl transition-all shadow-lg hover:shadow-blue-500/20 cursor-pointer group">
+        <span class="group-hover:scale-105 inline-block transition-transform">Sign In Now</span>
+    </a>
+    
+    <style>
+        @keyframes scaleIn {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-scale-in {
+            animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+    </style>
+</article>

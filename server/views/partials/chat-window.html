@@ -1,0 +1,110 @@
+<article class="flex flex-col h-full w-full relative bg-signal-bg">
+    
+    <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 sticky top-0 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
+                {{slice .Other 0 1}}
+            </div>
+            <div class="flex flex-col min-w-0">
+                <span class="text-signal-text-main font-semibold leading-tight truncate">{{.Other}}</span>
+                <span class="text-xs text-signal-text-sub">Signal • Mobile</span>
+            </div>
+        </div>
+        
+        <div class="flex gap-4 text-signal-text-sub shrink-0">
+            <button class="hover:text-signal-text-main transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </button>
+            <button class="hover:text-signal-text-main transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
+        <div class="flex flex-col justify-end min-h-full">
+            <div class="text-center mb-4 shrink-0">
+                <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
+            </div>
+            
+            <!-- Message list with SSE connection -->
+            <div id="message-list" 
+                 class="flex flex-col gap-1"
+                 hx-ext="sse"
+                 sse-connect="/sse/{{.Other}}"
+                 sse-swap="message"
+                 hx-swap="beforeend">
+                
+                {{$me := .Me}}
+                {{range .Messages}}
+                    <div class="flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}}" data-message-id="{{.MessageID}}">
+                        <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative {{if eq .FromID $me}}bg-signal-blue text-white rounded-2xl rounded-tr-sm{{else}}bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
+                            {{.Content}}
+                            <div class="text-[10px] opacity-60 text-right mt-1 select-none">
+                                {{if eq .Timestamp 0}}Now{{else}}{{formatTime .Timestamp}}{{end}}
+                            </div>
+                        </div>
+                    </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+    <footer class="p-4 bg-signal-bg shrink-0">
+        <form 
+            id="chat-form"
+            hx-post="/chat/{{.Other}}" 
+            hx-trigger="submit"
+            hx-swap="none"
+            class="flex items-end gap-2 m-0 relative">
+            
+            <button type="button" class="p-3 text-signal-text-sub hover:text-signal-text-main transition-colors rounded-full hover:bg-signal-surface mb-0.5 shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+            </button>
+
+            <div class="flex-1 bg-signal-surface rounded-[24px] flex items-center px-4 py-2 border border-transparent focus-within:border-signal-text-sub/30 transition-all min-w-0">
+                <input 
+                    id="chat-input"
+                    type="text" 
+                    name="content" 
+                    placeholder="Signal message" 
+                    required 
+                    autocomplete="off" 
+                    class="w-full bg-transparent text-signal-text-main placeholder-signal-text-sub/70 focus:outline-none py-1.5">
+            </div>
+            
+            <button 
+                type="submit"
+                class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 mb-0.5 group shrink-0">
+                <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+            </button>
+        </form>
+        
+        <script>
+            (function() {
+                const form = document.getElementById('chat-form');
+                const input = document.getElementById('chat-input');
+                const scrollWrapper = document.getElementById('scroll-wrapper');
+                
+                form.addEventListener('htmx:afterRequest', function(evt) {
+                    if (evt.detail.successful) {
+                        form.reset();
+                        input.focus();
+                        setTimeout(() => {
+                            scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
+                        }, 50);
+                    }
+                });
+                
+                document.body.addEventListener('htmx:sseMessage', function(evt) {
+                    console.log('SSE message received:', evt);
+                    setTimeout(() => {
+                        scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
+                    }, 50);
+                });
+                
+                scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
+            })();
+        </script>
+    </footer>
+</article>

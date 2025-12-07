@@ -1,0 +1,71 @@
+<article class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden animate-fade-in">
+    <header class="p-8 flex flex-col items-center border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+        {{if .CustomIcon}}
+            <div class="w-24 h-24 rounded-full mb-4 shadow-2xl ring-4 ring-signal-bg overflow-hidden">
+                <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+            </div>
+        {{else}}
+            {{$iconClass := "bg-signal-surface"}}
+            {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+            {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+            {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+            {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+            {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+            {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+            {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+            {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+            {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+            {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+            {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+            {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+            {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+            {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+            {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+            
+            <div class="w-24 h-24 {{$iconClass}} rounded-full flex items-center justify-center text-4xl font-bold text-white mb-4 shadow-2xl ring-4 ring-signal-bg">
+                {{slice .Username 0 1}}
+            </div>
+        {{end}}
+        
+        <h2 class="text-2xl font-bold text-signal-text-main">{{.Username}}</h2>
+        <span class="text-signal-text-sub mt-1 text-sm bg-white/5 px-3 py-1 rounded-full">{{.Role}}</span>
+    </header>
+
+    <div class="p-4 space-y-2">
+        <div class="bg-signal-surface/50 p-4 rounded-xl flex justify-between items-center group hover:bg-signal-surface transition-colors cursor-default">
+            <div>
+                <label class="block text-signal-text-sub text-xs font-medium mb-0.5">Username</label>
+                <p class="text-signal-text-main font-medium">{{.Username}}</p>
+            </div>
+            <svg class="w-5 h-5 text-signal-text-sub opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        </div>
+        
+        <div class="bg-signal-surface/50 p-4 rounded-xl flex justify-between items-center group hover:bg-signal-surface transition-colors cursor-default">
+            <div>
+                <label class="block text-signal-text-sub text-xs font-medium mb-0.5">User ID</label>
+                <p class="text-signal-text-main font-mono text-sm opacity-80">{{.UserId}}</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="p-6 pt-2">
+        <button 
+            class="w-full bg-signal-surface hover:bg-signal-hover text-signal-blue font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 group"
+            hx-get="/profile/edit" 
+            hx-target="#profile-card" 
+            hx-swap="innerHTML">
+            <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            Edit Profile
+        </button>
+    </footer>
+
+    <style>
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+</article>
