@@ -4,7 +4,6 @@ import (
 	"context"
 	"exc6/db"
 	"exc6/services/sessions"
-	"log"
 	"os"
 	"time"
 
@@ -148,15 +147,36 @@ func HandleProfileView(qdb *db.Queries) fiber.Handler {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
 
-		log.Println("user profile view:", user.CustomIcon.String)
+		// Extract string values from sql.NullString
+		iconValue := ""
+		if user.Icon.Valid {
+			iconValue = user.Icon.String
+		}
+
+		customIconValue := ""
+		if user.CustomIcon.Valid {
+			customIconValue = user.CustomIcon.String
+		}
 
 		// Check if it's an HTMX request for partial rendering
 		if isHTMXRequest(c) {
-			return c.Render("partials/profile-view", user)
+			return c.Render("partials/profile-view", fiber.Map{
+				"ID":         user.ID,
+				"Username":   user.Username,
+				"Role":       user.Role,
+				"Icon":       iconValue,
+				"CustomIcon": customIconValue,
+			})
 		}
 
 		// Full page render
-		return c.Render("profile", user)
+		return c.Render("profile", fiber.Map{
+			"ID":         user.ID,
+			"Username":   user.Username,
+			"Role":       user.Role,
+			"Icon":       iconValue,
+			"CustomIcon": customIconValue,
+		})
 	}
 }
 

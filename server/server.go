@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/favicon"
 	"github.com/gofiber/template/html/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -59,6 +60,8 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		WriteTimeout: cfg.Server.WriteTimeout,
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
+
+	app.Use(favicon.New())
 
 	// Serve static uploads
 	app.Static("/uploads", cfg.Server.UploadsDir)

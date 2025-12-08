@@ -80,27 +80,27 @@
         <aside class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20">
             <div class="h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5">
                 <a href="/profile" class="group flex items-center gap-3 cursor-pointer">
-                    {{if .CustomIcon.Valid}}
+                    {{if .CustomIcon}}
                         <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
-                            <img src="{{.CustomIcon.String}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                            <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
                         </div>
                     {{else}}
                         {{$iconClass := "bg-signal-surface"}}
-                        {{if eq .Icon.String "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-                        {{if eq .Icon.String "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
-                        {{if eq .Icon.String "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
-                        {{if eq .Icon.String "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-                        {{if eq .Icon.String "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
-                        {{if eq .Icon.String "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
-                        {{if eq .Icon.String "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
-                        {{if eq .Icon.String "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                        {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                        {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                        {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                        {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                        {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                        {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                        {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                        {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                        {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                        {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                        {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                        {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                        {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                        {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                        {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
                         
                         <div class="w-9 h-9 {{$iconClass}} rounded-full flex items-center justify-center text-sm font-bold text-white group-hover:scale-105 transition-transform ring-1 ring-white/5">
                             {{slice .Username 0 1}}
@@ -116,7 +116,6 @@
                     </button>
                 </div>
             </div>
-
             <div class="p-3 shrink-0">
                 <div class="bg-signal-surface rounded-lg px-3 py-1.5 flex items-center gap-2">
                     <svg class="w-4 h-4 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>

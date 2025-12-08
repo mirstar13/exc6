@@ -55,10 +55,21 @@ func HandleDashboard(csrv *chat.ChatService, qdb *db.Queries) fiber.Handler {
 			return err
 		}
 
+		// Extract string values for current user's icon
+		iconValue := ""
+		if user.Icon.Valid {
+			iconValue = user.Icon.String
+		}
+
+		customIconValue := ""
+		if user.CustomIcon.Valid {
+			customIconValue = user.CustomIcon.String
+		}
+
 		return c.Render("dashboard", fiber.Map{
 			"Username":   username,
-			"Icon":       user.Icon,
-			"CustomIcon": user.CustomIcon,
+			"Icon":       iconValue,       // Pass string, not sql.NullString
+			"CustomIcon": customIconValue, // Pass string, not sql.NullString
 			"Contacts":   contacts,
 		})
 	}

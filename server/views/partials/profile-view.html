@@ -1,26 +1,26 @@
 <article class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden animate-fade-in">
     <header class="p-8 flex flex-col items-center border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
-        {{if .CustomIcon.Valid}}
+        {{if .CustomIcon}}
             <div class="w-24 h-24 rounded-full mb-4 shadow-2xl ring-4 ring-signal-bg overflow-hidden">
-                <img src="{{.CustomIcon.String}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
             </div>
         {{else}}
             {{$iconClass := "bg-signal-surface"}}
-            {{if eq .Icon.String "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-            {{if eq .Icon.String "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-            {{if eq .Icon.String "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-            {{if eq .Icon.String "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
-            {{if eq .Icon.String "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
-            {{if eq .Icon.String "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
-            {{if eq .Icon.String "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
-            {{if eq .Icon.String "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
-            {{if eq .Icon.String "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
-            {{if eq .Icon.String "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
-            {{if eq .Icon.String "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-            {{if eq .Icon.String "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
-            {{if eq .Icon.String "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
-            {{if eq .Icon.String "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
-            {{if eq .Icon.String "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+            {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+            {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+            {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+            {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+            {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+            {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+            {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+            {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+            {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+            {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+            {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+            {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+            {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+            {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+            {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
             
             <div class="w-24 h-24 {{$iconClass}} rounded-full flex items-center justify-center text-4xl font-bold text-white mb-4 shadow-2xl ring-4 ring-signal-bg">
                 {{slice .Username 0 1}}
