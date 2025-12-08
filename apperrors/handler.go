@@ -75,7 +75,7 @@ func handleHTMXError(c *fiber.Ctx, err *AppError) error {
 
 	// Return error fragment
 	html := renderErrorFragment(err)
-	return c.Status(err.StatusCode).SendString(html)
+	return c.Status(err.StatusCode).Type("html").SendString(html)
 }
 
 // handleAPIError returns JSON for API requests
@@ -107,15 +107,26 @@ func handleBrowserError(c *fiber.Ctx, err *AppError) error {
 		return c.Redirect("/")
 	}
 
-	// Try to render error page
+	// Render using error.html template
 	renderErr := c.Status(err.StatusCode).Render("error", fiber.Map{
-		"Content": renderErrorFragment(err),
+		"StatusCode": err.StatusCode,
+		"ErrorCode":  err.Code,
+		"Message":    err.Message,
+		"Title":      getErrorTitle(err.StatusCode),
 	})
 
 	// Fallback to plain text if render fails
 	if renderErr != nil {
-		fmt.Println("Error rendering error page:", renderErr)
-		return c.Status(err.StatusCode).SendString(err.Message)
+		log.Printf("Error rendering error page: %v", renderErr)
+		return c.Status(err.StatusCode).Type("html").SendString(
+			fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><title>Error %d</title></head>
+<body>
+<h1>Error %d</h1>
+<p>%s</p>
+</body>
+</html>`, err.StatusCode, err.StatusCode, html.EscapeString(err.Message)))
 	}
 
 	return nil
@@ -123,63 +134,67 @@ func handleBrowserError(c *fiber.Ctx, err *AppError) error {
 
 // renderErrorFragment creates an HTML error fragment for HTMX
 func renderErrorFragment(err *AppError) string {
-	_ = getErrorIcon(err.StatusCode)
+	icon := getErrorIcon(err.StatusCode)
 	color := getErrorColor(err.StatusCode)
 
-	return `<div data-color="` + color + `" class="error-fragment">
-        ` + getErrorIcon(err.StatusCode) + `
-        <div>
-            <p class="font-semibold mb-0.5">` + html.EscapeString(string(err.Code)) + `</p>
-            <p class="message">` + html.EscapeString(err.Message) + `</p>
-        </div>
+	return fmt.Sprintf(`<div class="error-fragment" data-color="%s">
+    %s
+    <div>
+        <p class="font-semibold mb-0.5">%s</p>
+        <p class="error-message">%s</p>
     </div>
-	<style>
-		.error-fragment {
-		  padding: 1rem;
-		  border-radius: 0.75rem;
-		  margin-bottom: 1rem;
-		  font-size: 0.875rem;
-		  display: flex;
-		  align-items: start;
-		  gap: 0.75rem;
-		  animation: shake 0.5s;
-		}
+</div>
+<style>
+    .error-fragment {
+        padding: 1rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: start;
+        gap: 0.75rem;
+        animation: shake 0.5s;
+    }
 
-		.error-fragment[data-color="red"] {
-		  background-color: rgba(239, 68, 68, 0.1); /* bg-red-500/10 */
-		  border: 1px solid rgba(239, 68, 68, 0.3); /* border-red-500/30 */
-		  color: rgba(239, 68, 68, 1); /* text-red-400 */
-		}
+    .error-fragment[data-color="red"] {
+        background-color: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
 
-		.error-fragment[data-color="yellow"] {
-		  background-color: rgba(234, 179, 8, 0.1); /* bg-yellow-500/10 */
-		  border: 1px solid rgba(234, 179, 8, 0.3); /* border-yellow-500/30 */
-		  color: rgba(234, 179, 8, 1); /* text-yellow-400 */
-		}
+    .error-fragment[data-color="yellow"] {
+        background-color: rgba(234, 179, 8, 0.1);
+        border: 1px solid rgba(234, 179, 8, 0.3);
+        color: #eab308;
+    }
 
-		.error-fragment[data-color="orange"] {
-		  background-color: rgba(249, 115, 22, 0.1); /* bg-orange-500/10 */
-		  border: 1px solid rgba(249, 115, 22, 0.3); /* border-orange-500/30 */
-		  color: rgba(249, 115, 22, 1); /* text-orange-400 */
-		}
+    .error-fragment[data-color="orange"] {
+        background-color: rgba(249, 115, 22, 0.1);
+        border: 1px solid rgba(249, 115, 22, 0.3);
+        color: #f97316;
+    }
 
-		.error-fragment[data-color="green"] {
-		  background-color: rgba(34, 197, 94, 0.1); /* bg-green-500/10 */
-		  border: 1px solid rgba(34, 197, 94, 0.3); /* border-green-500/30 */
-		  color: rgba(34, 197, 94, 1); /* text-green-400 */
-		}
+    .error-fragment svg {
+        width: 1.25rem;
+        height: 1.25rem;
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+    }
 
-		.message {
-		  color: rgba(239, 68, 68, 0.75); /* Adjust text color for message */
-		}
-		
-		@keyframes shake {
-			0%, 100% { transform: translateX(0); }
-			10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
-			20%, 40%, 60%, 80% { transform: translateX(8px); }
-		}
-		.animate-shake { animation: shake 0.6s ease-in-out; }
-	</style>`
+    .error-message {
+        color: rgba(239, 68, 68, 0.9);
+    }
+    
+    @keyframes shake {
+        0%%, 100%% { transform: translateX(0); }
+        10%%, 30%%, 50%%, 70%%, 90%% { transform: translateX(-8px); }
+        20%%, 40%%, 60%%, 80%% { transform: translateX(8px); }
+    }
+</style>`,
+		color,
+		icon,
+		html.EscapeString(string(err.Code)),
+		html.EscapeString(err.Message))
 }
 
 // logError logs the error with context
@@ -201,19 +216,41 @@ func logError(logger *log.Logger, c *fiber.Ctx, err *AppError) {
 	}
 }
 
+// getErrorTitle returns a user-friendly title based on status code
+func getErrorTitle(statusCode int) string {
+	switch statusCode {
+	case 400:
+		return "Bad Request"
+	case 401:
+		return "Unauthorized"
+	case 403:
+		return "Forbidden"
+	case 404:
+		return "Not Found"
+	case 429:
+		return "Too Many Requests"
+	case 500:
+		return "Internal Server Error"
+	case 503:
+		return "Service Unavailable"
+	default:
+		return "Error"
+	}
+}
+
 // getErrorIcon returns an SVG icon based on status code
 func getErrorIcon(statusCode int) string {
 	if statusCode >= 500 {
-		return `<svg class="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+		return `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 		</svg>`
 	}
-	return `<svg class="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+	return `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
 		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 	</svg>`
 }
 
-// getErrorColor returns appropriate Tailwind color based on status
+// getErrorColor returns appropriate color based on status
 func getErrorColor(statusCode int) string {
 	switch {
 	case statusCode >= 500:
@@ -227,7 +264,7 @@ func getErrorColor(statusCode int) string {
 	}
 }
 
-// Helper function to wrap handler functions with automatic error conversion
+// WrapHandler wraps handler functions with automatic error conversion
 func WrapHandler(h func(*fiber.Ctx) error) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		err := h(c)
