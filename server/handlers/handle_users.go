@@ -256,18 +256,3 @@ func HandleUserLogout(smngr *sessions.SessionManager) fiber.Handler {
 		return ctx.SendStatus(fiber.StatusOK)
 	}
 }
-
-func HandleProfileView(udb *db.UsersDB) fiber.Handler {
-	return func(ctx *fiber.Ctx) error {
-		username := ctx.Locals("username").(string)
-		user := udb.FindUserByUsername(username)
-
-		return ctx.Render("partials/profile-view", fiber.Map{
-			"Username":   user.Username,
-			"UserId":     user.UserId,
-			"Role":       user.Role,
-			"Icon":       user.Icon,
-			"CustomIcon": user.CustomIcon,
-		})
-	}
-}
