@@ -1,10 +1,12 @@
 package auth
 
 import (
+	"context"
 	"exc6/db"
 	"exc6/services/sessions"
 
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Config struct {
@@ -16,7 +18,7 @@ type Config struct {
 	// Users DB stores the user information.
 	//
 	// Required. Default: nil
-	UsersDB *db.UsersDB
+	DB *db.Queries
 
 	// Realm is a string to define realm attribute of BasicAuth.
 	// the realm identifies the system to authenticate against
@@ -63,7 +65,7 @@ type Config struct {
 
 var ConfigDefault = Config{
 	Next:            nil,
-	UsersDB:         nil,
+	DB:              nil,
 	Authorizer:      nil,
 	SessionManager:  nil,
 	Unauthorized:    nil,
@@ -85,15 +87,23 @@ func configDefault(config ...Config) Config {
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
-	if cfg.UsersDB == nil {
-		cfg.UsersDB = ConfigDefault.UsersDB
+	if cfg.DB == nil {
+		cfg.DB = ConfigDefault.DB
 	}
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string) bool {
-			if cfg.UsersDB == nil {
+			if cfg.DB == nil {
 				return false
 			}
-			return cfg.UsersDB.ValidateCredentials(user, pass)
+
+			usr, err := cfg.DB.GetUserByUsername(context.Background(), user)
+			if err != nil {
+				return false
+			}
+
+			err = bcrypt.CompareHashAndPassword([]byte(usr.PasswordHash), []byte(pass))
+
+			return err == nil
 		}
 	}
 	if cfg.SessionManager == nil {

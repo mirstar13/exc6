@@ -1,7 +1,10 @@
 package apperrors
 
 import (
+	"fmt"
+	"html"
 	"log"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -45,7 +48,7 @@ func Handler(config HandlerConfig) fiber.ErrorHandler {
 
 		// Determine response format based on request type
 		isHTMX := c.Get("HX-Request") == "true"
-		isAPI := len(c.Path()) >= 4 && c.Path()[:4] == "/api"
+		isAPI := strings.HasPrefix(c.Path(), "/api/") || c.Path() == "/api"
 
 		// Handle HTMX requests
 		if isHTMX {
@@ -106,13 +109,12 @@ func handleBrowserError(c *fiber.Ctx, err *AppError) error {
 
 	// Try to render error page
 	renderErr := c.Status(err.StatusCode).Render("error", fiber.Map{
-		"Code":    err.Code,
-		"Message": err.Message,
-		"Status":  err.StatusCode,
+		"Content": renderErrorFragment(err),
 	})
 
 	// Fallback to plain text if render fails
 	if renderErr != nil {
+		fmt.Println("Error rendering error page:", renderErr)
 		return c.Status(err.StatusCode).SendString(err.Message)
 	}
 
@@ -121,17 +123,56 @@ func handleBrowserError(c *fiber.Ctx, err *AppError) error {
 
 // renderErrorFragment creates an HTML error fragment for HTMX
 func renderErrorFragment(err *AppError) string {
-	icon := getErrorIcon(err.StatusCode)
+	_ = getErrorIcon(err.StatusCode)
 	color := getErrorColor(err.StatusCode)
 
-	return `<div class="bg-` + color + `-500/10 border border-` + color + `-500/30 text-` + color + `-400 p-4 rounded-xl mb-4 text-sm flex items-start gap-3 animate-shake">
-		` + icon + `
-		<div>
-			<p class="font-semibold mb-0.5">` + string(err.Code) + `</p>
-			<p class="text-` + color + `-300">` + err.Message + `</p>
-		</div>
-	</div>
+	return `<div data-color="` + color + `" class="error-fragment">
+        ` + getErrorIcon(err.StatusCode) + `
+        <div>
+            <p class="font-semibold mb-0.5">` + html.EscapeString(string(err.Code)) + `</p>
+            <p class="message">` + html.EscapeString(err.Message) + `</p>
+        </div>
+    </div>
 	<style>
+		.error-fragment {
+		  padding: 1rem;
+		  border-radius: 0.75rem;
+		  margin-bottom: 1rem;
+		  font-size: 0.875rem;
+		  display: flex;
+		  align-items: start;
+		  gap: 0.75rem;
+		  animation: shake 0.5s;
+		}
+
+		.error-fragment[data-color="red"] {
+		  background-color: rgba(239, 68, 68, 0.1); /* bg-red-500/10 */
+		  border: 1px solid rgba(239, 68, 68, 0.3); /* border-red-500/30 */
+		  color: rgba(239, 68, 68, 1); /* text-red-400 */
+		}
+
+		.error-fragment[data-color="yellow"] {
+		  background-color: rgba(234, 179, 8, 0.1); /* bg-yellow-500/10 */
+		  border: 1px solid rgba(234, 179, 8, 0.3); /* border-yellow-500/30 */
+		  color: rgba(234, 179, 8, 1); /* text-yellow-400 */
+		}
+
+		.error-fragment[data-color="orange"] {
+		  background-color: rgba(249, 115, 22, 0.1); /* bg-orange-500/10 */
+		  border: 1px solid rgba(249, 115, 22, 0.3); /* border-orange-500/30 */
+		  color: rgba(249, 115, 22, 1); /* text-orange-400 */
+		}
+
+		.error-fragment[data-color="green"] {
+		  background-color: rgba(34, 197, 94, 0.1); /* bg-green-500/10 */
+		  border: 1px solid rgba(34, 197, 94, 0.3); /* border-green-500/30 */
+		  color: rgba(34, 197, 94, 1); /* text-green-400 */
+		}
+
+		.message {
+		  color: rgba(239, 68, 68, 0.75); /* Adjust text color for message */
+		}
+		
 		@keyframes shake {
 			0%, 100% { transform: translateX(0); }
 			10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }

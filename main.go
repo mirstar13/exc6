@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"exc6/config"
 	"exc6/db"
 	"exc6/server"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -43,14 +45,15 @@ func run() error {
 	log.Println("✓ Connected to Redis")
 
 	// Open users database
-	udb, err := db.OpenUsersDB()
+	datb, err := sql.Open("postgres", os.Getenv("GOOSE_DBSTRING"))
 	if err != nil {
-		return fmt.Errorf("failed to open users database: %w", err)
+		return fmt.Errorf("failed to open database connection: %w", err)
 	}
+	dbqueries := db.New(datb)
 	log.Println("✓ Loaded users database")
 
 	// Initialize chat service
-	csrv, err := chat.NewChatService(rdb, udb, os.Getenv("KAFKA_ADDR"))
+	csrv, err := chat.NewChatService(ctx, rdb, dbqueries, os.Getenv("KAFKA_ADDR"))
 	if err != nil {
 		return fmt.Errorf("failed to initialize chat service: %w", err)
 	}
@@ -108,7 +111,7 @@ func run() error {
 			RefillRate:   20,
 			RefillPeriod: time.Second,
 		},
-	}, udb, rdb, csrv, smngr)
+	}, dbqueries, rdb, csrv, smngr)
 	if err != nil {
 		return fmt.Errorf("failed to create server; err: %w", err)
 	}

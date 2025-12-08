@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func HandleLoadChatWindow(cs *chat.ChatService, udb *db.UsersDB) fiber.Handler {
+func HandleLoadChatWindow(cs *chat.ChatService, db *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		currentUser := c.Locals("username").(string)
 		targetUser := c.Params("contact")
@@ -19,12 +19,17 @@ func HandleLoadChatWindow(cs *chat.ChatService, udb *db.UsersDB) fiber.Handler {
 		}
 
 		// Get contact's user info for icon
-		contactUser := udb.FindUserByUsername(targetUser)
+		contactUser, err := db.GetUserByUsername(c.Context(), targetUser)
 		contactIcon := ""
 		contactCustomIcon := ""
-		if contactUser != nil {
-			contactIcon = contactUser.Icon
-			contactCustomIcon = contactUser.CustomIcon
+		if err == nil {
+			if contactUser.Icon.Valid {
+				contactIcon = contactUser.Icon.String
+			}
+
+			if contactUser.CustomIcon.Valid {
+				contactCustomIcon = contactUser.CustomIcon.String
+			}
 		}
 
 		return c.Render("partials/chat-window", fiber.Map{

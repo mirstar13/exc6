@@ -1,15 +1,18 @@
 package handlers
 
 import (
+	"database/sql"
 	"exc6/apperrors"
 	"exc6/db"
 	"exc6/services/sessions"
+	"exc6/utils"
 	"log"
 	"math/rand"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var defaultIcons = []string{
@@ -25,7 +28,7 @@ var defaultIcons = []string{
 	"solid-signal",
 }
 
-func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
+func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		username := ctx.FormValue("username")
 		password := ctx.FormValue("password")
@@ -40,7 +43,7 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 		}
 
 		// Validate password strength
-		if err := db.ValidatePasswordStrength(password); err != nil {
+		if err := utils.ValidatePasswordStrength(password); err != nil {
 			appErr := apperrors.FromError(err)
 			return ctx.Render("partials/register", fiber.Map{
 				"Error": appErr.Message,
@@ -48,7 +51,7 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 		}
 
 		// Check if user exists
-		if usr := udb.FindUserByUsername(username); usr != nil {
+		if _, err := qdb.GetUserByUsername(ctx.Context(), username); err == nil {
 			err := apperrors.NewUserExists(username)
 			return ctx.Render("partials/register", fiber.Map{
 				"Error": err.Message,
@@ -56,7 +59,7 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 		}
 
 		// Hash password
-		passwordHash, err := db.HashPassword(password)
+		passwordHash, err := utils.HashPassword(password)
 		if err != nil {
 			log.Printf("Password hashing error: %v", err)
 			return apperrors.NewInternalError("Failed to create account")
@@ -64,11 +67,11 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 
 		// Create user
 		randomIcon := defaultIcons[rand.Intn(len(defaultIcons))]
-		if err := udb.AddUser(db.User{
-			Username: username,
-			Password: passwordHash,
-			Role:     "member",
-			Icon:     randomIcon,
+		if _, err := qdb.CreateUser(ctx.Context(), db.CreateUserParams{
+			Username:     username,
+			PasswordHash: passwordHash,
+			Icon:         sql.NullString{String: randomIcon, Valid: true},
+			CustomIcon:   sql.NullString{String: "", Valid: true},
 		}); err != nil {
 			appErr := apperrors.FromError(err)
 			return ctx.Render("partials/register", fiber.Map{
@@ -76,42 +79,45 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 			})
 		}
 
-		// Save to database
-		if err := udb.Save(); err != nil {
-			log.Printf("Database save error: %v", err)
-			return apperrors.NewInternalError("Failed to save account")
-		}
-
 		return ctx.Render("partials/account-created", nil)
 	}
 }
 
-func HandleUserLogin(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Handler {
+func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		username := ctx.FormValue("username")
 		password := ctx.FormValue("password")
 
-		// Validate credentials
-		if !udb.ValidateCredentials(username, password) {
-			err := apperrors.NewInvalidCredentials()
-			return ctx.Render("partials/login", fiber.Map{
-				"Error":    err.Message,
-				"Username": username,
-			})
+		user, err := qdb.GetUserByUsername(ctx.Context(), username)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// User not found
+				appErr := apperrors.NewInvalidCredentials()
+				return ctx.Render("partials/login", fiber.Map{
+					"Error":    appErr.Message,
+					"Username": username,
+				})
+			}
+			// Other DB error
+			log.Printf("DB error fetching user: %v", err)
+			return apperrors.NewInternalError("Failed to process login")
 		}
 
-		// Get user
-		user := udb.FindUserByUsername(username)
-		if user == nil {
-			// This shouldn't happen after ValidateCredentials passes
-			return apperrors.NewUserNotFound()
+		// Verify password
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			// Invalid password
+			appErr := apperrors.NewInvalidCredentials()
+			return ctx.Render("partials/login", fiber.Map{
+				"Error":    appErr.Message,
+				"Username": username,
+			})
 		}
 
 		// Create session
 		sessionID := uuid.NewString()
 		newSession := sessions.NewSession(
 			sessionID,
-			user.UserId,
+			user.ID.String(),
 			username,
 			time.Now().Unix(),
 			time.Now().Unix(),
@@ -130,7 +136,7 @@ func HandleUserLogin(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Hand
 			Expires:  time.Now().Add(24 * time.Hour),
 			HTTPOnly: true,
 			SameSite: "Lax",
-			Secure:   false, // TODO: Set to true in production with HTTPS
+			Secure:   true,
 			Path:     "/",
 		})
 

@@ -12,15 +12,15 @@ import (
 
 // AuthRoutes handles all authenticated routes (requires valid session)
 type AuthRoutes struct {
-	udb   *db.UsersDB
+	db    *db.Queries
 	csrv  *chat.ChatService
 	smngr *sessions.SessionManager
 }
 
 // NewAuthRoutes creates a new authenticated routes handler
-func NewAuthRoutes(udb *db.UsersDB, csrv *chat.ChatService, smngr *sessions.SessionManager) *AuthRoutes {
+func NewAuthRoutes(db *db.Queries, csrv *chat.ChatService, smngr *sessions.SessionManager) *AuthRoutes {
 	return &AuthRoutes{
-		udb:   udb,
+		db:    db,
 		csrv:  csrv,
 		smngr: smngr,
 	}
@@ -31,13 +31,13 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	// Create authenticated route group
 	authed := app.Group("")
 	authed.Use(auth.New(auth.Config{
-		UsersDB:        ar.udb,
+		DB:             ar.db,
 		SessionManager: ar.smngr,
 		Next:           nil, // No routes to skip
 	}))
 
 	// Dashboard - main chat interface
-	authed.Get("/dashboard", handlers.HandleDashboard(ar.csrv, ar.udb))
+	authed.Get("/dashboard", handlers.HandleDashboard(ar.csrv, ar.db))
 
 	// Chat routes
 	ar.registerChatRoutes(authed)
@@ -49,7 +49,7 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 // registerChatRoutes sets up chat-related endpoints
 func (ar *AuthRoutes) registerChatRoutes(router fiber.Router) {
 	// Load chat window with contact
-	router.Get("/chat/:contact", handlers.HandleLoadChatWindow(ar.csrv, ar.udb))
+	router.Get("/chat/:contact", handlers.HandleLoadChatWindow(ar.csrv, ar.db))
 
 	// Send message to contact
 	router.Post("/chat/:contact", handlers.HandleSendMessage(ar.csrv))
@@ -61,11 +61,11 @@ func (ar *AuthRoutes) registerChatRoutes(router fiber.Router) {
 // registerProfileRoutes sets up profile management endpoints
 func (ar *AuthRoutes) registerProfileRoutes(router fiber.Router) {
 	// View profile
-	router.Get("/profile", handlers.HandleProfileView(ar.udb))
+	router.Get("/profile", handlers.HandleProfileView(ar.db))
 
 	// Edit profile form
-	router.Get("/profile/edit", handlers.HandleProfileEdit(ar.udb))
+	router.Get("/profile/edit", handlers.HandleProfileEdit(ar.db))
 
 	// Update profile
-	router.Put("/profile", handlers.HandleUserProfileUpdate(ar.udb, ar.smngr))
+	router.Put("/profile", handlers.HandleUserProfileUpdate(ar.db, ar.smngr))
 }

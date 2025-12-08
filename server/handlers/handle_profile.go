@@ -11,12 +11,12 @@ import (
 )
 
 // HandleUserProfileUpdate handles profile updates with secure file uploads
-func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Handler {
+func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		oldUsername := ctx.Locals("username").(string)
-		user := udb.FindUserByUsername(oldUsername)
-		if user == nil {
-			return ctx.Status(fiber.StatusNotFound).SendString("User not found")
+		user, err := qdb.GetUserByUsername(ctx.Context(), oldUsername)
+		if err != nil {
+			return renderProfileEditError(ctx, &db.User{}, "User not found")
 		}
 
 		// Extract form values
@@ -28,13 +28,13 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 		if err == nil && file != nil {
 			// Validate the upload
 			if err := ValidateImageUpload(file); err != nil {
-				return renderProfileEditError(ctx, user, err.Error())
+				return renderProfileEditError(ctx, &user, err.Error())
 			}
 
 			// Generate secure filename
-			filename, err := GenerateSecureFilename(user.UserId, file.Filename)
+			filename, err := GenerateSecureFilename(user.ID.String(), file.Filename)
 			if err != nil {
-				return renderProfileEditError(ctx, user, "Failed to generate filename")
+				return renderProfileEditError(ctx, &user, "Failed to generate filename")
 			}
 
 			// Get safe upload path
@@ -43,47 +43,46 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 
 			// Ensure directory exists
 			if err := os.MkdirAll(uploadDir, 0755); err != nil {
-				return renderProfileEditError(ctx, user, "Failed to create upload directory")
+				return renderProfileEditError(ctx, &user, "Failed to create upload directory")
 			}
 
 			// Save file
 			if err := ctx.SaveFile(file, safePath); err != nil {
-				return renderProfileEditError(ctx, user, "Failed to upload file")
+				return renderProfileEditError(ctx, &user, "Failed to upload file")
 			}
 
 			// Delete old custom icon if exists
-			if user.CustomIcon != "" {
-				oldPath := "./server" + user.CustomIcon
-				os.Remove(oldPath) // Ignore error if file doesn't exist
+			if user.CustomIcon.Valid && user.CustomIcon.String != "" {
+				oldPath := "./server" + user.CustomIcon.String
+				os.Remove(oldPath)
 			}
 
 			// Update user profile
-			user.CustomIcon = "/uploads/icons/" + filename
-			user.Icon = "" // Clear default icon when custom is set
+			user.CustomIcon.String = "/uploads/icons/" + filename
+			user.Icon.String = "" // Clear default icon when custom is set
 		} else if selectedIcon != "" {
 			// User selected a default icon
-			user.Icon = selectedIcon
+			user.Icon.String = selectedIcon
 
 			// Delete old custom icon if switching to default
-			if user.CustomIcon != "" {
-				oldPath := "./server" + user.CustomIcon
+			if user.CustomIcon.Valid && user.CustomIcon.String != "" {
+				oldPath := "./server" + user.CustomIcon.String
 				os.Remove(oldPath)
-				user.CustomIcon = ""
+				user.CustomIcon.String = ""
 			}
 		}
 
 		// Handle username update
 		if newUsername != "" && newUsername != oldUsername {
 			// Check if username already exists
-			if existingUser := udb.FindUserByUsername(newUsername); existingUser != nil {
-				return renderProfileEditError(ctx, user, "Username already exists")
+			if _, err := qdb.UpdateUser(ctx.Context(), db.UpdateUserParams{
+				ID:         user.ID,
+				Username:   newUsername,
+				Icon:       user.Icon,
+				CustomIcon: user.CustomIcon,
+			}); err != nil {
+				return renderProfileEditError(ctx, &user, "Username already taken")
 			}
-			user.Username = newUsername
-		}
-
-		// Save to database
-		if err := udb.Save(); err != nil {
-			return renderProfileEditError(ctx, user, "Failed to save changes")
 		}
 
 		// Update session with new username
@@ -104,7 +103,7 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 		// Render success
 		return ctx.Render("partials/profile-edit", fiber.Map{
 			"Username":   user.Username,
-			"UserId":     user.UserId,
+			"UserId":     user.ID,
 			"Role":       user.Role,
 			"Icon":       user.Icon,
 			"CustomIcon": user.CustomIcon,
@@ -113,26 +112,34 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 	}
 }
 
-func HandleDashboard(csrv *chat.ChatService, udb *db.UsersDB) fiber.Handler {
+func HandleDashboard(csrv *chat.ChatService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
-		contactUsernames := csrv.GetContacts(username)
+		contactUsernames, err := csrv.GetContacts(username)
+		if err != nil {
+			return err
+		}
 
 		// Convert usernames to full user objects for template
 		contacts := make([]*db.User, 0, len(contactUsernames))
 		for _, contactName := range contactUsernames {
-			if user := udb.FindUserByUsername(contactName); user != nil {
-				contacts = append(contacts, user)
+			if user, err := qdb.GetUserByUsername(c.Context(), contactName); err == nil {
+				contacts = append(contacts, &user)
 			}
 		}
 
 		currentUserIcon := ""
 		currentUserCustomIcon := ""
 
-		user := udb.FindUserByUsername(username)
-		if user != nil {
-			currentUserIcon = user.Icon
-			currentUserCustomIcon = user.CustomIcon
+		user, err := qdb.GetUserByUsername(c.Context(), username)
+		if err == nil {
+			if user.Icon.Valid {
+				currentUserIcon = user.Icon.String
+			}
+
+			if user.CustomIcon.Valid {
+				currentUserCustomIcon = user.CustomIcon.String
+			}
 		}
 
 		return c.Render("dashboard", fiber.Map{
@@ -145,15 +152,15 @@ func HandleDashboard(csrv *chat.ChatService, udb *db.UsersDB) fiber.Handler {
 }
 
 // HandleProfileView renders the user's profile page
-func HandleProfileView(udb *db.UsersDB) fiber.Handler {
+func HandleProfileView(qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
 			return handleUnauthorized(c)
 		}
 
-		user := udb.FindUserByUsername(username)
-		if user == nil {
+		user, err := qdb.GetUserByUsername(c.Context(), username)
+		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
 
@@ -168,21 +175,21 @@ func HandleProfileView(udb *db.UsersDB) fiber.Handler {
 }
 
 // HandleProfileEdit renders the profile edit form
-func HandleProfileEdit(udb *db.UsersDB) fiber.Handler {
+func HandleProfileEdit(db *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
 			return handleUnauthorized(c)
 		}
 
-		user := udb.FindUserByUsername(username)
-		if user == nil {
+		user, err := db.GetUserByUsername(c.Context(), username)
+		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
 
 		return c.Render("partials/profile-edit", fiber.Map{
 			"Username":   user.Username,
-			"UserId":     user.UserId,
+			"UserId":     user.ID,
 			"Role":       user.Role,
 			"Icon":       user.Icon,
 			"CustomIcon": user.CustomIcon,
@@ -219,7 +226,7 @@ func handleUnauthorized(c *fiber.Ctx) error {
 func renderProfileEditError(ctx *fiber.Ctx, user *db.User, errorMsg string) error {
 	return ctx.Render("partials/profile-edit", fiber.Map{
 		"Username":   user.Username,
-		"UserId":     user.UserId,
+		"UserId":     user.ID,
 		"Role":       user.Role,
 		"Icon":       user.Icon,
 		"CustomIcon": user.CustomIcon,

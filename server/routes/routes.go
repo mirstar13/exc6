@@ -9,10 +9,10 @@ import (
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatService, smngr *sessions.SessionManager) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, smngr *sessions.SessionManager) {
 	// Initialize route handlers
-	publicRoutes := NewPublicRoutes(udb, smngr)
-	authRoutes := NewAuthRoutes(udb, csrv, smngr)
+	publicRoutes := NewPublicRoutes(db, smngr)
+	authRoutes := NewAuthRoutes(db, csrv, smngr)
 	apiRoutes := NewAPIRoutes()
 
 	// Register public routes (no auth required)

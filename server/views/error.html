@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - SecureChat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
+                    colors: {
+                        signal: {
+                            bg: '#121212',          
+                            sidebar: '#181818',     
+                            header: '#1E1E1E',      
+                            surface: '#2C2C2C',     
+                            hover: '#333333',       
+                            blue: '#2C6BED',        
+                            bluehover: '#3876F3',
+                            darkblue: '#1851B4',
+                            text: {
+                                main: '#F2F2F2',
+                                sub: '#848586',
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="h-screen bg-signal-bg font-sans antialiased">
+    <main class="max-w-2xl mx-auto mt-8 px-4 pb-8">
+        <div id="profile-card">
+            {{ .Content }}
+        </div>
+    </main>
+
+    <style>
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+
+</body>
+</html>

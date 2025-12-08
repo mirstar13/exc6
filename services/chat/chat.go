@@ -25,16 +25,17 @@ const (
 
 type ChatService struct {
 	rdb           *redis.Client
-	udb           *db.UsersDB
+	qdb           *db.Queries
 	producer      *kafka.Producer
 	kafkaTopic    string
 	messageBuffer chan *ChatMessage
 	shutdownOnce  sync.Once
 	shutdownChan  chan struct{}
 	wg            sync.WaitGroup
+	ctx           context.Context
 }
 
-func NewChatService(rdb *redis.Client, udb *db.UsersDB, kafkaAddr string) (*ChatService, error) {
+func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kafkaAddr string) (*ChatService, error) {
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": kafkaAddr,
 		"client.id":         "go-fiber-dashboard",
@@ -46,11 +47,12 @@ func NewChatService(rdb *redis.Client, udb *db.UsersDB, kafkaAddr string) (*Chat
 
 	cs := &ChatService{
 		rdb:           rdb,
-		udb:           udb,
+		qdb:           qdb,
 		producer:      p,
 		kafkaTopic:    "chat-history",
 		messageBuffer: make(chan *ChatMessage, MessageBufferSize), // FIXED: Bounded buffer
 		shutdownChan:  make(chan struct{}),
+		ctx:           ctx,
 	}
 
 	// Start background message writer
@@ -143,9 +145,12 @@ func (cs *ChatService) getConversationKey(user1, user2 string) string {
 	return fmt.Sprintf("chat:conv:%s:%s", users[0], users[1])
 }
 
-func (cs *ChatService) GetContacts(currentUsername string) []string {
+func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 	var contacts []string
-	usernames := cs.udb.GetAllUsernames()
+	usernames, err := cs.qdb.GetAllUsernames(cs.ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, username := range usernames {
 		if username != currentUsername {
@@ -153,7 +158,7 @@ func (cs *ChatService) GetContacts(currentUsername string) []string {
 		}
 	}
 
-	return contacts
+	return contacts, nil
 }
 
 func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string) (*ChatMessage, error) {

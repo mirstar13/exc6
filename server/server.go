@@ -23,14 +23,14 @@ import (
 
 type Server struct {
 	app   *fiber.App
-	udb   *db.UsersDB
+	db    *db.Queries
 	rdb   *redis.Client
 	csrv  *chat.ChatService
 	smngr *sessions.SessionManager
 	cfg   *config.Config
 }
 
-func NewServer(cfg *config.Config, udb *db.UsersDB, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager) (*Server, error) {
+func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager) (*Server, error) {
 	// Initialize template engine
 	engine := html.New(cfg.Server.ViewsDir, ".html")
 
@@ -39,17 +39,24 @@ func NewServer(cfg *config.Config, udb *db.UsersDB, rdb *redis.Client, csrv *cha
 		return nil, fmt.Errorf("failed to add template functions: %w", err)
 	}
 
-	// Setup error handler configuration
-	errorConfig := apperrors.DefaultHandlerConfig()
-	errorConfig.ShowInternalErrors = false // Set to true in dev environment
-	errorConfig.OnError = func(c *fiber.Ctx, err *apperrors.AppError) {
-		// TODO: Add metrics/monitoring here
-		// Example: metrics.RecordError(err.Code, err.StatusCode)
+	errLogger, err := setupErrorLogging(cfg.Server.LogFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup error logging: %w", err)
+	}
+
+	errorConfig := apperrors.HandlerConfig{
+		Logger:             errLogger,
+		ShowInternalErrors: os.Getenv("APP_ENV") == "development",
+		OnError: func(c *fiber.Ctx, err *apperrors.AppError) {
+			// TODO: Add metrics/monitoring here
+			// Example: metrics.RecordError(err.Code, err.StatusCode)
+		},
 	}
 
 	// Create Fiber app with custom error handler
 	app := fiber.New(fiber.Config{
 		AppName:      "SecureChat",
+		ServerHeader: "SecureChatServer",
 		Views:        engine,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
@@ -77,14 +84,14 @@ func NewServer(cfg *config.Config, udb *db.UsersDB, rdb *redis.Client, csrv *cha
 	srv := &Server{
 		app:   app,
 		rdb:   rdb,
-		udb:   udb,
+		db:    db,
 		csrv:  csrv,
 		smngr: smngr,
 		cfg:   cfg,
 	}
 
 	// Register all routes
-	routes.RegisterRoutes(app, udb, csrv, smngr)
+	routes.RegisterRoutes(app, db, csrv, smngr)
 
 	return srv, nil
 }
@@ -160,4 +167,23 @@ func setupLogging(app *fiber.App, logFile string) error {
 	}))
 
 	return nil
+}
+
+func setupErrorLogging(logFile string) (*log.Logger, error) {
+	// Ensure log directory exists
+	if err := os.MkdirAll("log", 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Open log file
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// Fallback to stdout if file can't be opened
+		log.Printf("Warning: could not open log file %s: %v", logFile, err)
+		f = os.Stdout
+	}
+
+	errLogger := apperrors.DefaultHandlerConfig().Logger
+	errLogger.SetOutput(f)
+	return errLogger, nil
 }
