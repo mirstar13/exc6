@@ -4,6 +4,7 @@ import (
 	"context"
 	"exc6/db"
 	"exc6/services/sessions"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -61,6 +62,11 @@ type Config struct {
 	//
 	// Optional. Default: "Authorization"
 	CookieName string
+
+	// UpdateThreshold is the minimum time between session updates
+	//
+	// Optional. Default: 60 seconds
+	UpdateThreshold time.Duration
 }
 
 var ConfigDefault = Config{
@@ -72,6 +78,7 @@ var ConfigDefault = Config{
 	ContextUsername: "username",
 	ContextPassword: "password",
 	CookieName:      "Authorization",
+	UpdateThreshold: 60 * time.Second,
 }
 
 func configDefault(config ...Config) Config {
@@ -128,6 +135,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = ConfigDefault.CookieName
+	}
+	if cfg.UpdateThreshold <= 0 {
+		cfg.UpdateThreshold = ConfigDefault.UpdateThreshold
 	}
 
 	return cfg

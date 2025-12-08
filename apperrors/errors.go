@@ -147,6 +147,13 @@ func NewValidationError(message string) *AppError {
 	return New(ErrCodeValidationFailed, message, fiber.StatusBadRequest)
 }
 
+func NewBadRequest(message string) *AppError {
+	if message == "" {
+		message = "Bad request"
+	}
+	return New(ErrCodeInvalidInput, message, fiber.StatusBadRequest)
+}
+
 func NewInternalError(message string) *AppError {
 	if message == "" {
 		message = "An internal error occurred"

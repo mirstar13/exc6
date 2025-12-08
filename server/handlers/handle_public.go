@@ -41,8 +41,3 @@ func HandleSSETest() fiber.Handler {
 		return c.Render("test-sse", fiber.Map{})
 	}
 }
-
-// isHTMXRequest checks if the request is from HTMX
-func isHTMXRequest(c *fiber.Ctx) bool {
-	return c.Get("HX-Request") == "true"
-}

@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"exc6/apperrors"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"exc6/services/chat"
-	"log"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -13,9 +14,19 @@ func HandleLoadChatWindow(cs *chat.ChatService, db *db.Queries) fiber.Handler {
 		currentUser := c.Locals("username").(string)
 		targetUser := c.Params("contact")
 
+		// Validate target user parameter
+		if targetUser == "" {
+			return apperrors.NewBadRequest("Contact parameter is required")
+		}
+
 		history, err := cs.GetHistory(c.Context(), currentUser, targetUser)
 		if err != nil {
-			return c.Status(500).SendString("Error fetching chat")
+			logger.WithFields(map[string]interface{}{
+				"from":   currentUser,
+				"to":     targetUser,
+				"error":  err.Error(),
+			}).Error("Failed to fetch chat history")
+			return apperrors.NewInternalError("Failed to load chat history").WithInternal(err)
 		}
 
 		// Get contact's user info for icon
@@ -49,14 +60,23 @@ func HandleSendMessage(cs *chat.ChatService) fiber.Handler {
 		targetUser := c.Params("contact")
 		content := c.FormValue("content")
 
+		// Validate inputs
 		if content == "" {
-			return c.SendStatus(fiber.StatusBadRequest)
+			return apperrors.NewBadRequest("Message content cannot be empty")
+		}
+
+		if targetUser == "" {
+			return apperrors.NewBadRequest("Target user is required")
 		}
 
 		_, err := cs.SendMessage(c.Context(), currentUser, targetUser, content)
 		if err != nil {
-			log.Printf("Error sending message: %v", err)
-			return c.Status(500).SendString("Error sending message")
+			logger.WithFields(map[string]interface{}{
+				"from":  currentUser,
+				"to":    targetUser,
+				"error": err.Error(),
+			}).Error("Failed to send message")
+			return apperrors.NewInternalError("Failed to send message").WithInternal(err)
 		}
 
 		// Return 200 OK without HTML - SSE will handle displaying the message

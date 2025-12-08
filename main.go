@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"exc6/config"
 	"exc6/db"
+	infraredis "exc6/infrastructure/redis"
 	"exc6/server"
 	"exc6/services/chat"
 	"exc6/services/sessions"
@@ -31,21 +32,28 @@ func run() error {
 		log.Printf("Warning: .env file not found: %v", err)
 	}
 
-	// Initialize Redis
-	rdb := NewRedisClient()
-	defer rdb.Close()
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
-	// Test Redis connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("failed to connect to Redis: %w", err)
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
+	log.Println("✓ Configuration loaded and validated")
+	cfg.PrintSummary()
+
+	// Initialize Redis with proper pooling
+	rdb, err := infraredis.NewClient(cfg.Redis)
+	if err != nil {
+		return fmt.Errorf("failed to initialize Redis client: %w", err)
+	}
+	defer rdb.Close()
 	log.Println("✓ Connected to Redis")
 
 	// Open users database
-	datb, err := sql.Open("postgres", os.Getenv("GOOSE_DBSTRING"))
+	datb, err := sql.Open("postgres", cfg.Database.ConnectionString)
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %w", err)
 	}
@@ -53,7 +61,7 @@ func run() error {
 	log.Println("✓ Loaded users database")
 
 	// Initialize chat service
-	csrv, err := chat.NewChatService(ctx, rdb, dbqueries, os.Getenv("KAFKA_ADDR"))
+	csrv, err := chat.NewChatService(shutdownCtx, rdb, dbqueries, cfg.Kafka.Address)
 	if err != nil {
 		return fmt.Errorf("failed to initialize chat service: %w", err)
 	}
@@ -65,53 +73,7 @@ func run() error {
 	log.Println("✓ Initialized session manager")
 
 	// Create server
-	srv, err := server.NewServer(&config.Config{
-		Server: config.ServerConfig{
-			Host:         "0.0.0.0",
-			Port:         8080,
-			ViewsDir:     "./server/views",
-			LogFile:      "log/server.log",
-			UploadsDir:   "./server/uploads",
-			ReadTimeout:  5 * time.Minute,
-			WriteTimeout: 0,
-		},
-		Redis: config.RedisConfig{
-			Address:  os.Getenv("REDIS_ADDR"),
-			Username: os.Getenv("REDIS_USERNAME"),
-			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       0,
-		},
-		Kafka: config.KafkaConfig{
-			Address: os.Getenv("KAFKA_ADDR"),
-			Topic:   "chat-history",
-		},
-		Session: config.SessionConfig{
-			TTL:        24 * time.Hour,
-			CookieName: "session_id",
-		},
-		Upload: config.UploadConfig{
-			MaxFileSize: 5 * 1024 * 1024, // 5MB
-			AllowedMimeTypes: []string{
-				"image/jpeg",
-				"image/png",
-				"image/gif",
-				"image/webp",
-			},
-			AllowedExtensions: []string{
-				".jpg",
-				".jpeg",
-				".png",
-				".gif",
-				".webp",
-			},
-			IconsDir: "./server/uploads/icons",
-		},
-		RateLimit: config.RateLimitConfig{
-			Capacity:     100,
-			RefillRate:   20,
-			RefillPeriod: time.Second,
-		},
-	}, dbqueries, rdb, csrv, smngr)
+	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr)
 	if err != nil {
 		return fmt.Errorf("failed to create server; err: %w", err)
 	}
@@ -134,10 +96,6 @@ func run() error {
 	case sig := <-quit:
 		log.Printf("Received signal: %v. Shutting down gracefully...", sig)
 	}
-
-	// Graceful shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown failed: %w", err)

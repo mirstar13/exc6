@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 	"time"
@@ -83,7 +83,10 @@ func (cs *ChatService) messageWriter() {
 
 			msgJSON, err := json.Marshal(msg)
 			if err != nil {
-				log.Printf("Failed to marshal message: %v", err)
+				logger.WithFields(map[string]interface{}{
+					"message_id": msg.MessageID,
+					"error":      err.Error(),
+				}).Error("Failed to marshal message")
 				continue
 			}
 
@@ -122,7 +125,10 @@ func (cs *ChatService) messageWriter() {
 func (cs *ChatService) flushBatch(batch []*kafka.Message) {
 	for _, msg := range batch {
 		if err := cs.producer.Produce(msg, nil); err != nil {
-			log.Printf("Failed to produce message to Kafka: %v", err)
+			logger.WithFields(map[string]interface{}{
+				"topic": *msg.TopicPartition.Topic,
+				"error": err.Error(),
+			}).Error("Failed to produce message to Kafka")
 		}
 	}
 	// Wait for messages to be delivered
@@ -172,7 +178,12 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 
 	// Cache message in Redis
 	if err := cs.cacheMessage(ctx, msg); err != nil {
-		log.Printf("Failed to cache message: %v", err)
+		logger.WithFields(map[string]interface{}{
+			"message_id": msg.MessageID,
+			"from":       msg.FromID,
+			"to":         msg.ToID,
+			"error":      err.Error(),
+		}).Error("Failed to cache message")
 	}
 
 	// Send to buffer (non-blocking with timeout)
@@ -181,14 +192,22 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 		// Successfully buffered
 	case <-time.After(1 * time.Second):
 		// Buffer is full, log error but don't block
-		log.Printf("Message buffer full, dropping message: %s", msg.MessageID)
+		logger.WithFields(map[string]interface{}{
+			"message_id": msg.MessageID,
+			"from":       msg.FromID,
+			"to":         msg.ToID,
+		}).Error("Message buffer full, dropping message")
 		return nil, fmt.Errorf("message buffer full")
 	}
 
 	// Publish to Redis for real-time delivery
 	msgJSON, _ := json.Marshal(msg)
 	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
-		log.Printf("Failed to publish message: %v", err)
+		logger.WithFields(map[string]interface{}{
+			"message_id": msg.MessageID,
+			"channel":    "chat:messages",
+			"error":      err.Error(),
+		}).Error("Failed to publish message to Redis")
 	}
 
 	return msg, nil

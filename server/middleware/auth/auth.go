@@ -32,22 +32,29 @@ func New(config Config) fiber.Handler {
 			return apperrors.NewSessionExpired()
 		}
 
-		// Renew session TTL
-		if err := cfg.SessionManager.RenewSession(c.Context(), sessionID); err != nil {
-			return apperrors.NewInternalError("Failed to renew session").WithInternal(err)
-		}
-
 		// Store user info in context
 		c.Locals("username", sess.Username)
 		c.Locals("user_id", sess.UserID)
 
-		// Update last activity timestamp
-		cfg.SessionManager.UpdateSessionField(
-			c.Context(),
-			sessionID,
-			"last_activity",
-			fmt.Sprintf("%d", time.Now().Unix()),
-		)
+		// Only update session if last activity exceeds the threshold
+		// This reduces Redis writes by ~95% for active users
+		now := time.Now().Unix()
+		timeSinceLastUpdate := now - sess.LastActivity
+
+		if timeSinceLastUpdate >= int64(cfg.UpdateThreshold.Seconds()) {
+			// Renew session TTL
+			if err := cfg.SessionManager.RenewSession(c.Context(), sessionID); err != nil {
+				return apperrors.NewInternalError("Failed to renew session").WithInternal(err)
+			}
+
+			// Update last activity timestamp
+			cfg.SessionManager.UpdateSessionField(
+				c.Context(),
+				sessionID,
+				"last_activity",
+				fmt.Sprintf("%d", now),
+			)
+		}
 
 		return c.Next()
 	}

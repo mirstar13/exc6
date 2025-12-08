@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"exc6/apperrors"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"exc6/services/sessions"
 	"exc6/utils"
-	"log"
 	"math/rand"
 	"time"
 
@@ -61,7 +61,7 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 		// Hash password
 		passwordHash, err := utils.HashPassword(password)
 		if err != nil {
-			log.Printf("Password hashing error: %v", err)
+			logger.WithField("error", err.Error()).Error("Password hashing failed")
 			return apperrors.NewInternalError("Failed to create account")
 		}
 
@@ -99,7 +99,10 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 				})
 			}
 			// Other DB error
-			log.Printf("DB error fetching user: %v", err)
+			logger.WithFields(map[string]interface{}{
+				"username": username,
+				"error":    err.Error(),
+			}).Error("Database error fetching user")
 			return apperrors.NewInternalError("Failed to process login")
 		}
 
@@ -125,7 +128,11 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 
 		// Save session
 		if err := smngr.SaveSession(ctx.Context(), newSession); err != nil {
-			log.Printf("Session save error: %v", err)
+			logger.WithFields(map[string]interface{}{
+				"username":   username,
+				"session_id": sessionID,
+				"error":      err.Error(),
+			}).Error("Failed to save session")
 			return apperrors.NewInternalError("Failed to create session")
 		}
 
@@ -152,7 +159,10 @@ func HandleUserLogout(smngr *sessions.SessionManager) fiber.Handler {
 
 		if sessionID != "" {
 			if err := smngr.DeleteSession(ctx.Context(), sessionID); err != nil {
-				log.Printf("Failed to delete session: %v", err)
+				logger.WithFields(map[string]interface{}{
+					"session_id": sessionID,
+					"error":      err.Error(),
+				}).Warn("Failed to delete session during logout")
 				// Continue anyway - clear the cookie
 			}
 		}

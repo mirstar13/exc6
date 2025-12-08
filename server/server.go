@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
@@ -13,10 +12,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/template/html/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -105,85 +102,4 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down server...")
 	return s.app.ShutdownWithContext(ctx)
-}
-
-func addTemplateFunctions(engine *html.Engine) error {
-	// Dict function for template maps
-	engine.AddFunc("dict", func(values ...any) (map[string]any, error) {
-		if len(values)%2 != 0 {
-			return nil, errors.New("invalid dict call")
-		}
-		dict := make(map[string]any, len(values)/2)
-		for i := 0; i < len(values); i += 2 {
-			key, ok := values[i].(string)
-			if !ok {
-				return nil, errors.New("dict keys must be strings")
-			}
-			dict[key] = values[i+1]
-		}
-		return dict, nil
-	})
-
-	// Time formatting function
-	engine.AddFunc("formatTime", func(timestamp int64) string {
-		t := time.Unix(timestamp, 0)
-		now := time.Now()
-
-		if t.Day() == now.Day() && t.Month() == now.Month() && t.Year() == now.Year() {
-			return t.Format("3:04 PM")
-		}
-
-		yesterday := now.AddDate(0, 0, -1)
-		if t.Day() == yesterday.Day() && t.Month() == yesterday.Month() && t.Year() == yesterday.Year() {
-			return "Yesterday"
-		}
-
-		return t.Format("Jan 2")
-	})
-
-	return nil
-}
-
-func setupLogging(app *fiber.App, logFile string) error {
-	// Ensure log directory exists
-	if err := os.MkdirAll("log", 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	// Open log file
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		// Fallback to stdout if file can't be opened
-		log.Printf("Warning: could not open log file %s: %v", logFile, err)
-		f = os.Stdout
-	}
-
-	// Setup logger middleware
-	app.Use(logger.New(logger.Config{
-		Format:     "${time} | ${status} | ${latency} | ${method} ${path} | ${ip}\n",
-		TimeFormat: "2006-01-02 15:04:05",
-		TimeZone:   "Local",
-		Output:     f,
-	}))
-
-	return nil
-}
-
-func setupErrorLogging(logFile string) (*log.Logger, error) {
-	// Ensure log directory exists
-	if err := os.MkdirAll("log", 0755); err != nil {
-		return nil, fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	// Open log file
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		// Fallback to stdout if file can't be opened
-		log.Printf("Warning: could not open log file %s: %v", logFile, err)
-		f = os.Stdout
-	}
-
-	errLogger := apperrors.DefaultHandlerConfig().Logger
-	errLogger.SetOutput(f)
-	return errLogger, nil
 }

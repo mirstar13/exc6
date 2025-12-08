@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"exc6/db"
-	"exc6/services/chat"
 	"exc6/services/sessions"
 	"os"
 	"time"
@@ -112,45 +111,6 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 	}
 }
 
-func HandleDashboard(csrv *chat.ChatService, qdb *db.Queries) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		username := c.Locals("username").(string)
-		contactUsernames, err := csrv.GetContacts(username)
-		if err != nil {
-			return err
-		}
-
-		// Convert usernames to full user objects for template
-		contacts := make([]*db.User, 0, len(contactUsernames))
-		for _, contactName := range contactUsernames {
-			if user, err := qdb.GetUserByUsername(c.Context(), contactName); err == nil {
-				contacts = append(contacts, &user)
-			}
-		}
-
-		currentUserIcon := ""
-		currentUserCustomIcon := ""
-
-		user, err := qdb.GetUserByUsername(c.Context(), username)
-		if err == nil {
-			if user.Icon.Valid {
-				currentUserIcon = user.Icon.String
-			}
-
-			if user.CustomIcon.Valid {
-				currentUserCustomIcon = user.CustomIcon.String
-			}
-		}
-
-		return c.Render("dashboard", fiber.Map{
-			"Username":              username,
-			"CurrentUserIcon":       currentUserIcon,
-			"CurrentUserCustomIcon": currentUserCustomIcon,
-			"Contacts":              contacts,
-		})
-	}
-}
-
 // HandleProfileView renders the user's profile page
 func HandleProfileView(qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -196,40 +156,4 @@ func HandleProfileEdit(db *db.Queries) fiber.Handler {
 			"Saved":      false,
 		})
 	}
-}
-
-// getUsernameFromContext safely extracts username from context locals
-func getUsernameFromContext(c *fiber.Ctx) (string, error) {
-	val := c.Locals("username")
-	if val == nil {
-		return "", fiber.ErrUnauthorized
-	}
-
-	username, ok := val.(string)
-	if !ok || username == "" {
-		return "", fiber.ErrUnauthorized
-	}
-
-	return username, nil
-}
-
-// handleUnauthorized redirects to login for unauthorized requests
-func handleUnauthorized(c *fiber.Ctx) error {
-	if isHTMXRequest(c) {
-		c.Set("HX-Redirect", "/")
-		return c.SendStatus(fiber.StatusUnauthorized)
-	}
-	return c.Redirect("/")
-}
-
-// renderProfileEditError is a helper to render profile edit with error
-func renderProfileEditError(ctx *fiber.Ctx, user *db.User, errorMsg string) error {
-	return ctx.Render("partials/profile-edit", fiber.Map{
-		"Username":   user.Username,
-		"UserId":     user.ID,
-		"Role":       user.Role,
-		"Icon":       user.Icon,
-		"CustomIcon": user.CustomIcon,
-		"Error":      errorMsg,
-	})
 }

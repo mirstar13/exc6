@@ -21,7 +21,7 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 
 		targetContact := c.Params("contact")
 		if targetContact == "" {
-			return c.Status(fiber.StatusBadRequest).SendString("Contact required")
+			return c.Status(fiber.StatusBadRequest).SendString("Contact parameter required")
 		}
 
 		// Get last message ID from query param for reconnection
@@ -155,31 +155,60 @@ func sendMissedMessages(w *bufio.Writer, cs *chat.ChatService, username, targetC
 
 }
 
+// renderMessageHTML generates HTML for a chat message bubble
+// Note: This mirrors the template in server/views/partials/chat-message.html
+// Keep both in sync when making styling changes
 func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 	isMe := msg.FromID == currentUser
 
-	justify := "justify-start"
-	bubbleClass := "bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm"
-	timeClass := "text-signal-text-sub"
+	// Build message data
+	data := buildMessageData(msg, currentUser, isMe)
 
-	if isMe {
-		justify = "justify-end"
-		bubbleClass = "bg-signal-blue text-white rounded-2xl rounded-tr-sm"
-		timeClass = "text-blue-100"
-	}
+	// Render HTML using string builder for better performance
+	var html strings.Builder
+	html.WriteString(`<div class="flex w-full mb-1 group `)
+	html.WriteString(data.JustifyClass)
+	html.WriteString(`" data-message-id="`)
+	html.WriteString(msg.MessageID)
+	html.WriteString(`"><div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative `)
+	html.WriteString(data.BubbleClass)
+	html.WriteString(`" style="word-break: break-word; overflow-wrap: break-word;">`)
+	html.WriteString(data.EscapedContent)
+	html.WriteString(`<div class="text-[10px] opacity-60 text-right mt-1 select-none `)
+	html.WriteString(data.TimeClass)
+	html.WriteString(`">Now</div></div></div>`)
 
-	content := escapeHTML(msg.Content)
-
-	// Single-line HTML for SSE (no newlines)
-	html := fmt.Sprintf(`<div class="flex w-full mb-1 group %s" data-message-id="%s"><div class="max-w-[85%%] md:max-w-[60%%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative %s" style="word-break: break-word; overflow-wrap: break-word;">%s<div class="text-[10px] opacity-60 text-right mt-1 select-none %s">Now</div></div></div>`,
-		justify, msg.MessageID, bubbleClass, content, timeClass)
-
-	html = strings.ReplaceAll(html, "\n", "")
-	html = strings.ReplaceAll(html, "\r", "")
-
-	return html
+	return html.String()
 }
 
+// MessageData holds styling and content for rendering a message
+type MessageData struct {
+	JustifyClass    string
+	BubbleClass     string
+	TimeClass       string
+	EscapedContent  string
+}
+
+// buildMessageData prepares styling classes based on message sender
+func buildMessageData(msg chat.ChatMessage, currentUser string, isMe bool) MessageData {
+	data := MessageData{
+		EscapedContent: escapeHTML(msg.Content),
+	}
+
+	if isMe {
+		data.JustifyClass = "justify-end"
+		data.BubbleClass = "bg-signal-blue text-white rounded-2xl rounded-tr-sm"
+		data.TimeClass = "text-blue-100"
+	} else {
+		data.JustifyClass = "justify-start"
+		data.BubbleClass = "bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm"
+		data.TimeClass = "text-signal-text-sub"
+	}
+
+	return data
+}
+
+// escapeHTML sanitizes user content to prevent XSS attacks
 func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
