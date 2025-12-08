@@ -30,158 +30,164 @@
             
             <!-- Current Icon Preview -->
             <div class="flex items-center gap-4 mb-4">
-                {{if .CustomIcon}}
-                    <div class="w-20 h-20 rounded-full shadow-2xl ring-4 ring-signal-bg overflow-hidden">
-                        <img src="{{.CustomIcon}}" alt="Profile" class="w-full h-full object-cover">
-                    </div>
-                {{else}}
-                    {{$iconClass := "bg-signal-surface"}}
-                    {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-                    {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-                    {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-                    {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
-                    {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
-                    {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
-                    {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
-                    {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
-                    {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
-                    {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
-                    {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-                    {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
-                    {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
-                    {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
-                    {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
-                    
-                    <div class="w-20 h-20 {{$iconClass}} rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-2xl ring-4 ring-signal-bg">
-                        {{slice .Username 0 1}}
-                    </div>
-                {{end}}
+                <div id="current-icon-preview">
+                    {{if .CustomIcon}}
+                        <div class="w-20 h-20 rounded-full shadow-2xl ring-4 ring-signal-bg overflow-hidden">
+                            <img src="{{.CustomIcon}}" alt="Profile" class="w-full h-full object-cover">
+                        </div>
+                    {{else}}
+                        {{$iconClass := "bg-signal-surface"}}
+                        {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                        {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                        {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                        {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                        {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                        {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                        {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                        {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                        {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                        {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                        {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                        {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                        {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                        {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                        {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                        
+                        <div class="w-20 h-20 {{$iconClass}} rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-2xl ring-4 ring-signal-bg">
+                            {{slice .Username 0 1}}
+                        </div>
+                    {{end}}
+                </div>
                 <div class="flex-1">
                     <p class="text-signal-text-main text-sm font-medium mb-1">Current Icon</p>
                     <p class="text-signal-text-sub text-xs">Choose from defaults or upload custom</p>
                 </div>
             </div>
 
-            <!-- Tab System using CSS only -->
-            <input type="radio" name="icon-tab" id="tab-default" class="hidden tab-radio" checked>
-            <input type="radio" name="icon-tab" id="tab-custom" class="hidden tab-radio">
-
-            <!-- Tab Labels -->
+            <!-- Tab Buttons -->
             <div class="flex gap-2 mb-4 bg-signal-surface/50 p-1 rounded-xl">
-                <label for="tab-default" class="tab-label flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer text-center text-signal-text-sub hover:text-signal-text-main">
+                <button 
+                    type="button" 
+                    id="default-tab-btn" 
+                    onclick="showDefaultIcons()" 
+                    class="tab-button active flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all text-signal-text-main bg-signal-blue">
                     Default Icons
-                </label>
-                <label for="tab-custom" class="tab-label flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer text-center text-signal-text-sub hover:text-signal-text-main">
+                </button>
+                <button 
+                    type="button" 
+                    id="custom-tab-btn" 
+                    onclick="showCustomUpload()" 
+                    class="tab-button flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all text-signal-text-sub hover:text-signal-text-main">
                     Upload Custom
-                </label>
+                </button>
             </div>
 
             <!-- Default Icons Grid -->
-            <div class="tab-content" id="default-icons-content">
+            <div id="default-icons-panel" class="tab-panel">
                 <div class="grid grid-cols-5 gap-3 mb-4">
                     <!-- Gradient Icons -->
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-blue" class="hidden icon-radio" {{if eq .Icon "gradient-blue"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-blue" class="hidden peer" {{if eq .Icon "gradient-blue"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-purple" class="hidden icon-radio" {{if eq .Icon "gradient-purple"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-purple" class="hidden peer" {{if eq .Icon "gradient-purple"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-green" class="hidden icon-radio" {{if eq .Icon "gradient-green"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-green" class="hidden peer" {{if eq .Icon "gradient-green"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-orange" class="hidden icon-radio" {{if eq .Icon "gradient-orange"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-orange" class="hidden peer" {{if eq .Icon "gradient-orange"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-cyan" class="hidden icon-radio" {{if eq .Icon "gradient-cyan"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-cyan" class="hidden peer" {{if eq .Icon "gradient-cyan"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-rose" class="hidden icon-radio" {{if eq .Icon "gradient-rose"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-rose-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-rose" class="hidden peer" {{if eq .Icon "gradient-rose"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-rose-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-indigo" class="hidden icon-radio" {{if eq .Icon "gradient-indigo"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-indigo" class="hidden peer" {{if eq .Icon "gradient-indigo"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-amber" class="hidden icon-radio" {{if eq .Icon "gradient-amber"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-amber" class="hidden peer" {{if eq .Icon "gradient-amber"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-teal" class="hidden icon-radio" {{if eq .Icon "gradient-teal"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-teal-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-teal" class="hidden peer" {{if eq .Icon "gradient-teal"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-teal-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="gradient-slate" class="hidden icon-radio" {{if eq .Icon "gradient-slate"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-gradient-to-br from-slate-600 to-gray-700 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="gradient-slate" class="hidden peer" {{if eq .Icon "gradient-slate"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-gradient-to-br from-slate-600 to-gray-700 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <!-- Solid Colors -->
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="solid-signal" class="hidden icon-radio" {{if eq .Icon "solid-signal"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-signal-blue rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="solid-signal" class="hidden peer" {{if eq .Icon "solid-signal"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-signal-blue rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="solid-dark" class="hidden icon-radio" {{if eq .Icon "solid-dark"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-signal-surface rounded-full flex items-center justify-center text-signal-text-main font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent border border-white/10">
+                        <input type="radio" name="icon" value="solid-dark" class="hidden peer" {{if eq .Icon "solid-dark"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-signal-surface rounded-full flex items-center justify-center text-signal-text-main font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent border border-white/10 peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="solid-red" class="hidden icon-radio" {{if eq .Icon "solid-red"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="solid-red" class="hidden peer" {{if eq .Icon "solid-red"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="solid-emerald" class="hidden icon-radio" {{if eq .Icon "solid-emerald"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="solid-emerald" class="hidden peer" {{if eq .Icon "solid-emerald"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
 
                     <label class="cursor-pointer group">
-                        <input type="radio" name="icon" value="solid-violet" class="hidden icon-radio" {{if eq .Icon "solid-violet"}}checked{{end}}>
-                        <div class="icon-option w-14 h-14 bg-violet-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent">
+                        <input type="radio" name="icon" value="solid-violet" class="hidden peer" {{if eq .Icon "solid-violet"}}checked{{end}} onchange="updateIconPreview(this)">
+                        <div class="w-14 h-14 bg-violet-600 rounded-full flex items-center justify-center text-white font-bold text-lg hover:scale-110 transition-transform ring-2 ring-transparent peer-checked:ring-signal-blue peer-checked:ring-4">
                             {{slice .Username 0 1}}
                         </div>
                     </label>
@@ -189,9 +195,9 @@
             </div>
 
             <!-- Custom Upload Section -->
-            <div class="tab-content" id="custom-upload-content">
+            <div id="custom-upload-panel" class="tab-panel hidden">
                 <div class="bg-signal-surface/50 rounded-xl p-6 border-2 border-dashed border-white/10 hover:border-signal-blue/50 transition-colors mb-4">
-                    <input type="file" name="custom_icon" id="custom-icon-upload" accept="image/*" class="hidden">
+                    <input type="file" name="custom_icon" id="custom-icon-upload" accept="image/*" class="hidden" onchange="handleFileSelect(this)">
                     <label for="custom-icon-upload" class="cursor-pointer flex flex-col items-center gap-3">
                         <div class="w-16 h-16 bg-signal-surface rounded-full flex items-center justify-center">
                             <svg class="w-8 h-8 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,7 +205,7 @@
                             </svg>
                         </div>
                         <div class="text-center">
-                            <p class="text-signal-text-main font-medium mb-1">Click to upload</p>
+                            <p class="text-signal-text-main font-medium mb-1" id="upload-label">Click to upload</p>
                             <p class="text-signal-text-sub text-xs">PNG, JPG up to 5MB</p>
                         </div>
                     </label>
@@ -249,27 +255,89 @@
         </div>
     </form>
 
+    <script>
+        // Tab switching
+        function showDefaultIcons() {
+            document.getElementById('default-icons-panel').classList.remove('hidden');
+            document.getElementById('custom-upload-panel').classList.add('hidden');
+            document.getElementById('default-tab-btn').classList.add('active', 'bg-signal-blue', 'text-signal-text-main');
+            document.getElementById('default-tab-btn').classList.remove('text-signal-text-sub');
+            document.getElementById('custom-tab-btn').classList.remove('active', 'bg-signal-blue', 'text-signal-text-main');
+            document.getElementById('custom-tab-btn').classList.add('text-signal-text-sub');
+            
+            // Clear file input when switching to default icons
+            document.getElementById('custom-icon-upload').value = '';
+            document.getElementById('upload-label').textContent = 'Click to upload';
+        }
+
+        function showCustomUpload() {
+            document.getElementById('default-icons-panel').classList.add('hidden');
+            document.getElementById('custom-upload-panel').classList.remove('hidden');
+            document.getElementById('custom-tab-btn').classList.add('active', 'bg-signal-blue', 'text-signal-text-main');
+            document.getElementById('custom-tab-btn').classList.remove('text-signal-text-sub');
+            document.getElementById('default-tab-btn').classList.remove('active', 'bg-signal-blue', 'text-signal-text-main');
+            document.getElementById('default-tab-btn').classList.add('text-signal-text-sub');
+            
+            // Clear icon selection when switching to custom
+            const iconRadios = document.querySelectorAll('input[name="icon"]');
+            iconRadios.forEach(radio => radio.checked = false);
+        }
+
+        // File selection handler
+        function handleFileSelect(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const label = document.getElementById('upload-label');
+                label.textContent = file.name;
+                
+                // Preview the image
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('current-icon-preview');
+                    preview.innerHTML = '<div class="w-20 h-20 rounded-full shadow-2xl ring-4 ring-signal-bg overflow-hidden"><img src="' + e.target.result + '" alt="Preview" class="w-full h-full object-cover"></div>';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Icon preview update
+        function updateIconPreview(radio) {
+            const iconValue = radio.value;
+            const username = document.querySelector('input[name="username"]').value;
+            const initial = username.charAt(0).toUpperCase();
+            
+            const iconClasses = {
+                'gradient-blue': 'bg-gradient-to-br from-blue-500 to-blue-700',
+                'gradient-purple': 'bg-gradient-to-br from-purple-500 to-pink-600',
+                'gradient-green': 'bg-gradient-to-br from-green-500 to-emerald-600',
+                'gradient-orange': 'bg-gradient-to-br from-orange-500 to-red-600',
+                'gradient-cyan': 'bg-gradient-to-br from-cyan-500 to-blue-600',
+                'gradient-rose': 'bg-gradient-to-br from-rose-500 to-pink-600',
+                'gradient-indigo': 'bg-gradient-to-br from-indigo-500 to-purple-600',
+                'gradient-amber': 'bg-gradient-to-br from-amber-500 to-orange-600',
+                'gradient-teal': 'bg-gradient-to-br from-teal-500 to-green-600',
+                'gradient-slate': 'bg-gradient-to-br from-slate-600 to-gray-700',
+                'solid-signal': 'bg-signal-blue',
+                'solid-dark': 'bg-signal-surface border border-white/10',
+                'solid-red': 'bg-red-600',
+                'solid-emerald': 'bg-emerald-600',
+                'solid-violet': 'bg-violet-600'
+            };
+            
+            const iconClass = iconClasses[iconValue] || 'bg-signal-surface';
+            const textColor = iconValue === 'solid-dark' ? 'text-signal-text-main' : 'text-white';
+            
+            const preview = document.getElementById('current-icon-preview');
+            preview.innerHTML = '<div class="w-20 h-20 ' + iconClass + ' rounded-full flex items-center justify-center text-3xl font-bold ' + textColor + ' shadow-2xl ring-4 ring-signal-bg">' + initial + '</div>';
+        }
+
+        // Initialize - show default icons tab by default
+        showDefaultIcons();
+    </script>
+
     <style>
         .htmx-request #button-text { opacity: 0; }
         .htmx-request #spinner { display: flex !important; }
-
-        .icon-radio:checked + .icon-option {
-            --tw-ring-width: 3px;
-            --tw-ring-color: rgb(44 107 237);
-        }
-
-        .tab-content { display: none; }
-        #tab-default:checked ~ div #default-icons-content { display: block; }
-        #tab-custom:checked ~ div #custom-upload-content { display: block; }
-        
-        #tab-default:checked ~ div label[for="tab-default"] {
-            background-color: rgb(44 107 237);
-            color: white;
-        }
-        #tab-custom:checked ~ div label[for="tab-custom"] {
-            background-color: rgb(44 107 237);
-            color: white;
-        }
 
         @keyframes shake {
             0%, 100% { transform: translateX(0); }

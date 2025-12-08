@@ -184,14 +184,9 @@ func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*
 		messages = append(messages, &msg)
 	}
 
-	if len(messages) == 0 {
-		log.Printf("No cached messages for %s<->%s", user1, user2)
-	}
-
 	return messages, nil
 }
 
-// Close cleans up resources
 func (cs *ChatService) Close() error {
 	cs.producer.Close()
 	close(cs.messageBuffer)

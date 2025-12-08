@@ -80,9 +80,32 @@
         <aside class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20">
             <div class="h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5">
                 <a href="/profile" class="group flex items-center gap-3 cursor-pointer">
-                    <div class="w-9 h-9 bg-signal-surface rounded-full flex items-center justify-center text-sm font-bold text-signal-text-main group-hover:bg-signal-hover transition-colors ring-1 ring-white/5">
-                        {{slice .Username 0 1}}
-                    </div>
+                    {{if .CurrentUserCustomIcon}}
+                        <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
+                            <img src="{{.CurrentUserCustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                        </div>
+                    {{else}}
+                        {{$iconClass := "bg-signal-surface"}}
+                        {{if eq .CurrentUserIcon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                        {{if eq .CurrentUserIcon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                        {{if eq .CurrentUserIcon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                        {{if eq .CurrentUserIcon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                        {{if eq .CurrentUserIcon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                        
+                        <div class="w-9 h-9 {{$iconClass}} rounded-full flex items-center justify-center text-sm font-bold text-white group-hover:scale-105 transition-transform ring-1 ring-white/5">
+                            {{slice .Username 0 1}}
+                        </div>
+                    {{end}}
                 </a>
                 <div class="flex gap-2">
                     <button class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub transition-colors">

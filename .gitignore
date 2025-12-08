@@ -30,3 +30,6 @@ log
 
 # sensitive files
 *.json
+
+# useless files
+server/uploads/icons/*

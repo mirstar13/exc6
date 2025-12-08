@@ -76,7 +76,16 @@ var RegisterRoutes = func(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatServic
 	authed.Get("/dashboard", func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
 		contactUsernames := csrv.GetContacts(username)
-
+		
+		// Get current user's icon info
+		currentUser := udb.FindUserByUsername(username)
+		currentUserIcon := ""
+		currentUserCustomIcon := ""
+		if currentUser != nil {
+			currentUserIcon = currentUser.Icon
+			currentUserCustomIcon = currentUser.CustomIcon
+		}
+		
 		// Build contact info with icons
 		contacts := make([]ContactInfo, 0, len(contactUsernames))
 		for _, contactUsername := range contactUsernames {
@@ -89,10 +98,12 @@ var RegisterRoutes = func(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatServic
 				})
 			}
 		}
-
+		
 		return c.Render("dashboard", fiber.Map{
-			"Username": username,
-			"Contacts": contacts,
+			"Username":              username,
+			"CurrentUserIcon":       currentUserIcon,
+			"CurrentUserCustomIcon": currentUserCustomIcon,
+			"Contacts":              contacts,
 		})
 	})
 
