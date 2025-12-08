@@ -10,6 +10,7 @@ import (
 	"database/sql"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -132,6 +133,42 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CustomIcon,
 	)
 	return i, err
+}
+
+const getUsersByUsernames = `-- name: GetUsersByUsernames :many
+SELECT id, created_at, updated_at, username, role, password_hash, icon, custom_icon FROM users WHERE username = ANY($1::text[])
+`
+
+func (q *Queries) GetUsersByUsernames(ctx context.Context, dollar_1 []string) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, getUsersByUsernames, pq.Array(dollar_1))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Username,
+			&i.Role,
+			&i.PasswordHash,
+			&i.Icon,
+			&i.CustomIcon,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateUser = `-- name: UpdateUser :one

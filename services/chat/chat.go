@@ -32,7 +32,6 @@ type ChatService struct {
 	shutdownOnce  sync.Once
 	shutdownChan  chan struct{}
 	wg            sync.WaitGroup
-	// REMOVED: ctx field - contexts should be passed per-operation
 }
 
 func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kafkaAddr string) (*ChatService, error) {
@@ -82,7 +81,7 @@ func (cs *ChatService) messageWriter() {
 
 			msgJSON, err := json.Marshal(msg)
 			if err != nil {
-				logger.WithFields(map[string]interface{}{
+				logger.WithFields(map[string]any{
 					"message_id": msg.MessageID,
 					"error":      err.Error(),
 				}).Error("Failed to marshal message")
@@ -124,7 +123,7 @@ func (cs *ChatService) messageWriter() {
 func (cs *ChatService) flushBatch(batch []*kafka.Message) {
 	for _, msg := range batch {
 		if err := cs.producer.Produce(msg, nil); err != nil {
-			logger.WithFields(map[string]interface{}{
+			logger.WithFields(map[string]any{
 				"topic": *msg.TopicPartition.Topic,
 				"error": err.Error(),
 			}).Error("Failed to produce message to Kafka")
@@ -182,7 +181,7 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 
 	// Cache message in Redis
 	if err := cs.cacheMessage(ctx, msg); err != nil {
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"from":       msg.FromID,
 			"to":         msg.ToID,
@@ -196,7 +195,7 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 		// Successfully buffered
 	case <-time.After(1 * time.Second):
 		// Buffer is full, log error but don't block
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"from":       msg.FromID,
 			"to":         msg.ToID,
@@ -207,7 +206,7 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 	// Publish to Redis for real-time delivery
 	msgJSON, _ := json.Marshal(msg)
 	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"channel":    "chat:messages",
 			"error":      err.Error(),

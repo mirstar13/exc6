@@ -61,7 +61,30 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
 
-	app.Use(favicon.New())
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self' https://unpkg.com https://cdn.tailwindcss.com; "+
+				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;")
+		return c.Next()
+	})
+
+	// Setup favicon middleware - serves all favicon formats
+	app.Use(favicon.New(favicon.Config{
+		File: "./static/favicon.ico",
+		URL:  "/favicon.ico",
+	}))
+
+	// Serve static files from /static directory
+	// This will serve all other favicon formats (PNG, SVG, etc.)
+	app.Static("/", "./static", fiber.Static{
+		Compress:      true,
+		ByteRange:     false,
+		Browse:        false,
+		Index:         "",
+		CacheDuration: 86400, // 24 hours
+		MaxAge:        86400,
+	})
 
 	// Serve static uploads
 	app.Static("/uploads", cfg.Server.UploadsDir)

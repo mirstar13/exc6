@@ -183,14 +183,15 @@ func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 
 // MessageData holds styling and content for rendering a message
 type MessageData struct {
-	JustifyClass    string
-	BubbleClass     string
-	TimeClass       string
-	EscapedContent  string
+	JustifyClass   string
+	BubbleClass    string
+	TimeClass      string
+	EscapedContent string
 }
 
 // buildMessageData prepares styling classes based on message sender
 func buildMessageData(msg chat.ChatMessage, currentUser string, isMe bool) MessageData {
+	_ = currentUser // currently unused, but may be needed for future enhancements
 	data := MessageData{
 		EscapedContent: escapeHTML(msg.Content),
 	}

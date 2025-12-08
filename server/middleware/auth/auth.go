@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"exc6/apperrors"
-	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,8 +22,6 @@ func New(config Config) fiber.Handler {
 			return apperrors.NewUnauthorized("No session found")
 		}
 
-		// FIXED: Use a background context with timeout for Redis operations
-		// instead of the request context which may have already expired
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
@@ -57,13 +54,9 @@ func New(config Config) fiber.Handler {
 				// The session is still valid
 				c.Locals("session_renewal_failed", true)
 			} else {
-				// Update last activity timestamp only if renewal succeeded
-				cfg.SessionManager.UpdateSessionField(
-					updateCtx,
-					sessionID,
-					"last_activity",
-					fmt.Sprintf("%d", now),
-				)
+				if timeSinceLastUpdate >= int64(cfg.UpdateThreshold.Seconds()) {
+					cfg.SessionManager.RenewSession(updateCtx, sessionID)
+				}
 			}
 		}
 

@@ -3,9 +3,11 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"exc6/apperrors"
 	"fmt"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strings"
 )
@@ -33,6 +35,7 @@ var AllowedImageMIMETypes = map[string]bool{
 
 // ValidateImageUpload validates uploaded image files
 func ValidateImageUpload(file *multipart.FileHeader) error {
+
 	// Check file size
 	if file.Size > MaxFileSize {
 		return apperrors.NewFileTooLarge(MaxFileSize)
@@ -99,4 +102,16 @@ func GetSafeUploadPath(baseDir, filename string) string {
 	cleanFile := filepath.Base(filename) // Base strips any directory components
 
 	return filepath.Join(cleanBase, cleanFile)
+}
+
+func validateImageMagicBytes(file multipart.File) error {
+	header := make([]byte, 512)
+	file.Read(header)
+	file.Seek(0, 0)
+
+	contentType := http.DetectContentType(header)
+	if !AllowedImageMIMETypes[contentType] {
+		return errors.New("invalid image format")
+	}
+	return nil
 }

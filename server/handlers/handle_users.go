@@ -153,7 +153,7 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 			Expires:  time.Now().Add(24 * time.Hour),
 			HTTPOnly: true,
 			SameSite: "Lax",
-			Secure:   true,
+			Secure:   false,
 			Path:     "/",
 		})
 

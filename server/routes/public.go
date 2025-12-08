@@ -24,9 +24,6 @@ func NewPublicRoutes(db *db.Queries, smngr *sessions.SessionManager) *PublicRout
 
 // Register sets up all public routes
 func (pr *PublicRoutes) Register(app *fiber.App) {
-	// Favicon
-	app.Get("/favicon.ico", handlers.HandleFavicon())
-
 	// Landing page
 	app.Get("/", handlers.HandleHomepage())
 
