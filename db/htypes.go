@@ -1,5 +1,7 @@
 package db
 
+import "sync"
+
 type User struct {
 	UserId     string `json:"user_id"`
 	Username   string `json:"username"`
@@ -11,4 +13,6 @@ type User struct {
 
 type UsersDB struct {
 	Users []*User `json:"users"`
+	mu    sync.RWMutex
+	path  string
 }
