@@ -1,15 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"exc6/apperrors"
 	"exc6/db"
 	"exc6/pkg/logger"
 	"exc6/services/chat"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-func HandleLoadChatWindow(cs *chat.ChatService, db *db.Queries) fiber.Handler {
+func HandleLoadChatWindow(cs *chat.ChatService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		currentUser := c.Locals("username").(string)
 		targetUser := c.Params("contact")
@@ -19,18 +21,21 @@ func HandleLoadChatWindow(cs *chat.ChatService, db *db.Queries) fiber.Handler {
 			return apperrors.NewBadRequest("Contact parameter is required")
 		}
 
-		history, err := cs.GetHistory(c.Context(), currentUser, targetUser)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		history, err := cs.GetHistory(ctx, currentUser, targetUser)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
-				"from":   currentUser,
-				"to":     targetUser,
-				"error":  err.Error(),
+				"from":  currentUser,
+				"to":    targetUser,
+				"error": err.Error(),
 			}).Error("Failed to fetch chat history")
 			return apperrors.NewInternalError("Failed to load chat history").WithInternal(err)
 		}
 
 		// Get contact's user info for icon
-		contactUser, err := db.GetUserByUsername(c.Context(), targetUser)
+		contactUser, err := qdb.GetUserByUsername(ctx, targetUser)
 		contactIcon := ""
 		contactCustomIcon := ""
 		if err == nil {
@@ -69,7 +74,10 @@ func HandleSendMessage(cs *chat.ChatService) fiber.Handler {
 			return apperrors.NewBadRequest("Target user is required")
 		}
 
-		_, err := cs.SendMessage(c.Context(), currentUser, targetUser, content)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		_, err := cs.SendMessage(ctx, currentUser, targetUser, content)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
 				"from":  currentUser,

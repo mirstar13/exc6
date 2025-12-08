@@ -32,9 +32,8 @@ func run() error {
 		log.Printf("Warning: .env file not found: %v", err)
 	}
 
-	// Graceful shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -60,8 +59,7 @@ func run() error {
 	dbqueries := db.New(datb)
 	log.Println("✓ Loaded users database")
 
-	// Initialize chat service
-	csrv, err := chat.NewChatService(shutdownCtx, rdb, dbqueries, cfg.Kafka.Address)
+	csrv, err := chat.NewChatService(appCtx, rdb, dbqueries, cfg.Kafka.Address)
 	if err != nil {
 		return fmt.Errorf("failed to initialize chat service: %w", err)
 	}
@@ -96,6 +94,12 @@ func run() error {
 	case sig := <-quit:
 		log.Printf("Received signal: %v. Shutting down gracefully...", sig)
 	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	// Cancel application context to stop background services
+	appCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown failed: %w", err)

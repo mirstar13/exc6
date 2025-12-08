@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"exc6/apperrors"
 	"exc6/db"
@@ -50,8 +51,11 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 			})
 		}
 
+		dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
 		// Check if user exists
-		if _, err := qdb.GetUserByUsername(ctx.Context(), username); err == nil {
+		if _, err := qdb.GetUserByUsername(dbCtx, username); err == nil {
 			err := apperrors.NewUserExists(username)
 			return ctx.Render("partials/register", fiber.Map{
 				"Error": err.Message,
@@ -67,7 +71,7 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 
 		// Create user
 		randomIcon := defaultIcons[rand.Intn(len(defaultIcons))]
-		if _, err := qdb.CreateUser(ctx.Context(), db.CreateUserParams{
+		if _, err := qdb.CreateUser(dbCtx, db.CreateUserParams{
 			Username:     username,
 			PasswordHash: passwordHash,
 			Icon:         sql.NullString{String: randomIcon, Valid: true},
@@ -88,7 +92,10 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		username := ctx.FormValue("username")
 		password := ctx.FormValue("password")
 
-		user, err := qdb.GetUserByUsername(ctx.Context(), username)
+		dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		user, err := qdb.GetUserByUsername(dbCtx, username)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				// User not found
@@ -126,8 +133,11 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 			time.Now().Unix(),
 		)
 
-		// Save session
-		if err := smngr.SaveSession(ctx.Context(), newSession); err != nil {
+		// Save session with background context
+		sessCtx, sessCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer sessCancel()
+
+		if err := smngr.SaveSession(sessCtx, newSession); err != nil {
 			logger.WithFields(map[string]interface{}{
 				"username":   username,
 				"session_id": sessionID,
@@ -158,7 +168,10 @@ func HandleUserLogout(smngr *sessions.SessionManager) fiber.Handler {
 		sessionID := ctx.Cookies("session_id")
 
 		if sessionID != "" {
-			if err := smngr.DeleteSession(ctx.Context(), sessionID); err != nil {
+			sessCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			if err := smngr.DeleteSession(sessCtx, sessionID); err != nil {
 				logger.WithFields(map[string]interface{}{
 					"session_id": sessionID,
 					"error":      err.Error(),

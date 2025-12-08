@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"exc6/apperrors"
 	"fmt"
 	"time"
@@ -22,8 +23,13 @@ func New(config Config) fiber.Handler {
 			return apperrors.NewUnauthorized("No session found")
 		}
 
+		// FIXED: Use a background context with timeout for Redis operations
+		// instead of the request context which may have already expired
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
 		// Retrieve session from Redis
-		sess, err := cfg.SessionManager.GetSession(c.Context(), sessionID)
+		sess, err := cfg.SessionManager.GetSession(ctx, sessionID)
 		if err != nil {
 			return apperrors.NewInternalError("Failed to retrieve session").WithInternal(err)
 		}
@@ -42,18 +48,23 @@ func New(config Config) fiber.Handler {
 		timeSinceLastUpdate := now - sess.LastActivity
 
 		if timeSinceLastUpdate >= int64(cfg.UpdateThreshold.Seconds()) {
-			// Renew session TTL
-			if err := cfg.SessionManager.RenewSession(c.Context(), sessionID); err != nil {
-				return apperrors.NewInternalError("Failed to renew session").WithInternal(err)
-			}
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer updateCancel()
 
-			// Update last activity timestamp
-			cfg.SessionManager.UpdateSessionField(
-				c.Context(),
-				sessionID,
-				"last_activity",
-				fmt.Sprintf("%d", now),
-			)
+			// Renew session TTL
+			if err := cfg.SessionManager.RenewSession(updateCtx, sessionID); err != nil {
+				// Log but don't fail the request if session renewal fails
+				// The session is still valid
+				c.Locals("session_renewal_failed", true)
+			} else {
+				// Update last activity timestamp only if renewal succeeded
+				cfg.SessionManager.UpdateSessionField(
+					updateCtx,
+					sessionID,
+					"last_activity",
+					fmt.Sprintf("%d", now),
+				)
+			}
 		}
 
 		return c.Next()

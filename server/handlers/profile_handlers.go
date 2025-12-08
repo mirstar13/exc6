@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"exc6/db"
 	"exc6/services/sessions"
 	"os"
@@ -13,7 +14,11 @@ import (
 func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		oldUsername := ctx.Locals("username").(string)
-		user, err := qdb.GetUserByUsername(ctx.Context(), oldUsername)
+
+		dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		user, err := qdb.GetUserByUsername(dbCtx, oldUsername)
 		if err != nil {
 			return renderProfileEditError(ctx, &db.User{}, "User not found")
 		}
@@ -74,7 +79,7 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 		// Handle username update
 		if newUsername != "" && newUsername != oldUsername {
 			// Check if username already exists
-			if _, err := qdb.UpdateUser(ctx.Context(), db.UpdateUserParams{
+			if _, err := qdb.UpdateUser(dbCtx, db.UpdateUserParams{
 				ID:         user.ID,
 				Username:   newUsername,
 				Icon:       user.Icon,
@@ -87,9 +92,12 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 		// Update session with new username
 		sessionID := ctx.Cookies("session_id")
 		if sessionID != "" {
-			if currentSession, _ := smngr.GetSession(ctx.Context(), sessionID); currentSession != nil {
+			sessCtx, sessCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer sessCancel()
+
+			if currentSession, _ := smngr.GetSession(sessCtx, sessionID); currentSession != nil {
 				currentSession.Username = user.Username
-				smngr.SaveSession(ctx.Context(), currentSession)
+				smngr.SaveSession(sessCtx, currentSession)
 			}
 		}
 
@@ -119,7 +127,10 @@ func HandleProfileView(qdb *db.Queries) fiber.Handler {
 			return handleUnauthorized(c)
 		}
 
-		user, err := qdb.GetUserByUsername(c.Context(), username)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		user, err := qdb.GetUserByUsername(ctx, username)
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
@@ -135,14 +146,17 @@ func HandleProfileView(qdb *db.Queries) fiber.Handler {
 }
 
 // HandleProfileEdit renders the profile edit form
-func HandleProfileEdit(db *db.Queries) fiber.Handler {
+func HandleProfileEdit(qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
 			return handleUnauthorized(c)
 		}
 
-		user, err := db.GetUserByUsername(c.Context(), username)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		user, err := qdb.GetUserByUsername(ctx, username)
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}

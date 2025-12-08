@@ -32,7 +32,7 @@ type ChatService struct {
 	shutdownOnce  sync.Once
 	shutdownChan  chan struct{}
 	wg            sync.WaitGroup
-	ctx           context.Context
+	// REMOVED: ctx field - contexts should be passed per-operation
 }
 
 func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kafkaAddr string) (*ChatService, error) {
@@ -50,9 +50,8 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		qdb:           qdb,
 		producer:      p,
 		kafkaTopic:    "chat-history",
-		messageBuffer: make(chan *ChatMessage, MessageBufferSize), // FIXED: Bounded buffer
+		messageBuffer: make(chan *ChatMessage, MessageBufferSize),
 		shutdownChan:  make(chan struct{}),
-		ctx:           ctx,
 	}
 
 	// Start background message writer
@@ -153,7 +152,12 @@ func (cs *ChatService) getConversationKey(user1, user2 string) string {
 
 func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 	var contacts []string
-	usernames, err := cs.qdb.GetAllUsernames(cs.ctx)
+
+	// Use background context with timeout for DB query
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	usernames, err := cs.qdb.GetAllUsernames(ctx)
 	if err != nil {
 		return nil, err
 	}
