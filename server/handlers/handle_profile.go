@@ -7,6 +7,37 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+func HandleDashboard(csrv *chat.ChatService, udb *db.UsersDB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username := c.Locals("username").(string)
+		contactUsernames := csrv.GetContacts(username)
+
+		// Convert usernames to full user objects for template
+		contacts := make([]*db.User, 0, len(contactUsernames))
+		for _, contactName := range contactUsernames {
+			if user := udb.FindUserByUsername(contactName); user != nil {
+				contacts = append(contacts, user)
+			}
+		}
+
+		currentUserIcon := ""
+		currentUserCustomIcon := ""
+
+		user := udb.FindUserByUsername(username)
+		if user != nil {
+			currentUserIcon = user.Icon
+			currentUserCustomIcon = user.CustomIcon
+		}
+
+		return c.Render("dashboard", fiber.Map{
+			"Username":              username,
+			"CurrentUserIcon":       currentUserIcon,
+			"CurrentUserCustomIcon": currentUserCustomIcon,
+			"Contacts":              contacts,
+		})
+	}
+}
+
 // HandleProfileView renders the user's profile page
 func HandleProfileView(udb *db.UsersDB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -50,19 +81,6 @@ func HandleProfileEdit(udb *db.UsersDB) fiber.Handler {
 			"Icon":       user.Icon,
 			"CustomIcon": user.CustomIcon,
 			"Saved":      false,
-		})
-	}
-}
-
-// HandleDashboard renders the main dashboard with chat list
-func HandleDashboard(csrv *chat.ChatService) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		username := c.Locals("username").(string)
-		contacts := csrv.GetContacts(username)
-
-		return c.Render("dashboard", fiber.Map{
-			"Username": username,
-			"Contacts": contacts,
 		})
 	}
 }

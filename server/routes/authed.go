@@ -37,7 +37,7 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	}))
 
 	// Dashboard - main chat interface
-	authed.Get("/dashboard", handlers.HandleDashboard(ar.csrv))
+	authed.Get("/dashboard", handlers.HandleDashboard(ar.csrv, ar.udb))
 
 	// Chat routes
 	ar.registerChatRoutes(authed)
