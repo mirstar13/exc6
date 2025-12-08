@@ -31,7 +31,7 @@
             
             <div class="flex flex-col min-w-0">
                 <span class="text-signal-text-main font-semibold leading-tight truncate">{{.Other}}</span>
-                <span class="text-xs text-signal-text-sub">Signal • Mobile</span>
+                <span class="text-xs text-signal-text-sub" id="connection-status">Connected</span>
             </div>
         </div>
         
@@ -51,13 +51,7 @@
                 <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
             </div>
             
-            <div id="message-list" 
-                 class="flex flex-col gap-1"
-                 hx-ext="sse"
-                 sse-connect="/sse/{{.Other}}"
-                 sse-swap="message"
-                 hx-swap="beforeend">
-                
+            <div id="message-list" class="flex flex-col gap-1">
                 {{$me := .Me}}
                 {{range .Messages}}
                     <div class="flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}}" data-message-id="{{.MessageID}}">
@@ -108,25 +102,104 @@
                 const form = document.getElementById('chat-form');
                 const input = document.getElementById('chat-input');
                 const scrollWrapper = document.getElementById('scroll-wrapper');
+                const messageList = document.getElementById('message-list');
+                const statusEl = document.getElementById('connection-status');
+                const contactName = '{{.Other}}';
                 
+                let eventSource = null;
+                let reconnectAttempts = 0;
+                const maxReconnectAttempts = 10;
+                
+                // Get last message ID
+                function getLastMessageId() {
+                    const messages = messageList.querySelectorAll('[data-message-id]');
+                    if (messages.length > 0) {
+                        return messages[messages.length - 1].dataset.messageId;
+                    }
+                    return '';
+                }
+                
+                // Scroll to bottom
+                function scrollToBottom() {
+                    setTimeout(() => {
+                        scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
+                    }, 50);
+                }
+                
+                // Update connection status
+                function updateStatus(status, color = 'text-signal-text-sub') {
+                    if (statusEl) {
+                        statusEl.textContent = status;
+                        statusEl.className = 'text-xs ' + color;
+                    }
+                }
+                
+                // Connect to SSE
+                function connectSSE() {
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                    
+                    const lastMessageId = getLastMessageId();
+                    const url = '/sse/' + contactName + (lastMessageId ? '?lastMessageId=' + lastMessageId : '');
+                    
+                    console.log('SSE: Connecting...', lastMessageId ? 'with last message: ' + lastMessageId : 'fresh connection');
+                    updateStatus('Connecting...', 'text-yellow-500');
+                    
+                    eventSource = new EventSource(url);
+                    
+                    eventSource.addEventListener('connected', function(e) {
+                        console.log('SSE: Connected', e.data);
+                        updateStatus('Connected', 'text-green-500');
+                        reconnectAttempts = 0;
+                    });
+                    
+                    eventSource.addEventListener('message', function(e) {
+                        console.log('SSE: Message received');
+                        messageList.insertAdjacentHTML('beforeend', e.data);
+                        scrollToBottom();
+                    });
+                    
+                    eventSource.addEventListener('ping', function(e) {
+                        console.log('SSE: Keepalive ping');
+                    });
+                    
+                    eventSource.onerror = function(e) {
+                        console.error('SSE: Connection error', e);
+                        updateStatus('Reconnecting...', 'text-yellow-500');
+                        
+                        eventSource.close();
+                        
+                        if (reconnectAttempts < maxReconnectAttempts) {
+                            reconnectAttempts++;
+                            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                            console.log(`SSE: Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+                            setTimeout(connectSSE, delay);
+                        } else {
+                            updateStatus('Disconnected', 'text-red-500');
+                            console.error('SSE: Max reconnection attempts reached');
+                        }
+                    };
+                }
+                
+                // Handle form submission
                 form.addEventListener('htmx:afterRequest', function(evt) {
                     if (evt.detail.successful) {
                         form.reset();
                         input.focus();
-                        setTimeout(() => {
-                            scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
-                        }, 50);
                     }
                 });
                 
-                document.body.addEventListener('htmx:sseMessage', function(evt) {
-                    console.log('SSE message received:', evt);
-                    setTimeout(() => {
-                        scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
-                    }, 50);
-                });
+                // Initialize
+                scrollToBottom();
+                connectSSE();
                 
-                scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
+                // Cleanup on page unload
+                window.addEventListener('beforeunload', function() {
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                });
             })();
         </script>
     </footer>

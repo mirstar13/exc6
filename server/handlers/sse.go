@@ -19,14 +19,15 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 		}
 
-		// Get the target contact from URL parameter
 		targetContact := c.Params("contact")
 		if targetContact == "" {
 			return c.Status(fiber.StatusBadRequest).SendString("Contact required")
 		}
 
-		// Create copies of these strings to avoid them being corrupted
-		// when the Fiber context is reused for other requests
+		// Get last message ID from query param for reconnection
+		lastMessageID := c.Query("lastMessageId", "")
+
+		// Create copies to avoid corruption
 		usernameCopy := string([]byte(username))
 		targetContactCopy := string([]byte(targetContact))
 
@@ -35,12 +36,19 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
 		c.Set("X-Accel-Buffering", "no")
+		c.Set("Transfer-Encoding", "chunked")
 
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-			// Use the copied variables, not the originals
+			// CRITICAL: Remove ALL timeouts for SSE connections
+			if conn := c.Context().Conn(); conn != nil {
+				// Set to zero value = no deadline
+				conn.SetReadDeadline(time.Time{})
+				conn.SetWriteDeadline(time.Time{})
+			}
+
 			username := usernameCopy
 			targetContact := targetContactCopy
-			// Create a context that we can cancel
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -50,13 +58,16 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 
 			ch := pubsub.Channel()
 
-			// Send initial connection message
-			fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
-			if err := w.Flush(); err != nil {
-				return
+			// Send connection established event
+			sendSSE(w, "connected", `{"status":"connected"}`)
+
+			// If reconnecting, send any missed messages from cache
+			if lastMessageID != "" {
+				sendMissedMessages(w, cs, username, targetContact, lastMessageID)
 			}
 
-			ticker := time.NewTicker(30 * time.Second)
+			// Keep-alive ticker - send every 15 seconds
+			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
 
 			for {
@@ -66,39 +77,86 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 						return
 					}
 
-					// Parse message
 					var chatMsg chat.ChatMessage
 					if err := json.Unmarshal([]byte(msg.Payload), &chatMsg); err != nil {
 						continue
 					}
 
-					// Only send messages for THIS specific chat
+					// Filter messages for this conversation
 					isRelevant := (chatMsg.FromID == username && chatMsg.ToID == targetContact) ||
 						(chatMsg.FromID == targetContact && chatMsg.ToID == username)
 
 					if isRelevant {
-						// Render the message HTML
 						html := renderMessageHTML(chatMsg, username)
-
-						// Send as SSE - ensure single line for proper SSE format
-						fmt.Fprintf(w, "event: message\ndata: %s\n\n", html)
-						if err := w.Flush(); err != nil {
+						if !sendSSE(w, "message", html) {
 							return
 						}
 					}
 
 				case <-ticker.C:
-					// Send keepalive ping
-					fmt.Fprintf(w, "event: ping\ndata: {}\n\n")
-					if err := w.Flush(); err != nil {
+					// Send keep-alive ping
+					if !sendSSE(w, "ping", `{"time":`+fmt.Sprintf("%d", time.Now().Unix())+`}`) {
 						return
 					}
+
+				case <-ctx.Done():
+					return
 				}
 			}
 		})
 
 		return nil
 	}
+}
+
+// sendSSE sends a Server-Sent Event and returns false if it fails
+func sendSSE(w *bufio.Writer, event, data string) bool {
+	// Format: event: <event>\ndata: <data>\n\n
+	_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+	if err != nil {
+		return false
+	}
+
+	// Flush immediately - critical for SSE
+	err = w.Flush()
+	if err != nil {
+		return false
+	}
+
+	return true
+}
+
+// sendMissedMessages sends any messages that were missed during disconnection
+func sendMissedMessages(w *bufio.Writer, cs *chat.ChatService, username, targetContact, lastMessageID string) {
+	ctx := context.Background()
+
+	// Get recent message history
+	messages, err := cs.GetHistory(ctx, username, targetContact)
+	if err != nil {
+		return
+	}
+
+	// Find messages after lastMessageID
+	foundLast := false
+	missedCount := 0
+
+	for _, msg := range messages {
+		if msg.MessageID == lastMessageID {
+			foundLast = true
+			continue
+		}
+
+		// Send all messages after the last one
+		if foundLast {
+			html := renderMessageHTML(*msg, username)
+			if sendSSE(w, "message", html) {
+				missedCount++
+			} else {
+				return
+			}
+		}
+	}
+
 }
 
 func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
@@ -114,14 +172,12 @@ func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 		timeClass = "text-blue-100"
 	}
 
-	// Escape HTML in content
 	content := escapeHTML(msg.Content)
 
-	// Create HTML as a single line to ensure proper SSE format
+	// Single-line HTML for SSE (no newlines)
 	html := fmt.Sprintf(`<div class="flex w-full mb-1 group %s" data-message-id="%s"><div class="max-w-[85%%] md:max-w-[60%%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative %s" style="word-break: break-word; overflow-wrap: break-word;">%s<div class="text-[10px] opacity-60 text-right mt-1 select-none %s">Now</div></div></div>`,
 		justify, msg.MessageID, bubbleClass, content, timeClass)
 
-	// Remove any newlines that might have been added
 	html = strings.ReplaceAll(html, "\n", "")
 	html = strings.ReplaceAll(html, "\r", "")
 
@@ -129,24 +185,10 @@ func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 }
 
 func escapeHTML(s string) string {
-	// Simple HTML escaping
-	s = replaceAll(s, "&", "&amp;")
-	s = replaceAll(s, "<", "&lt;")
-	s = replaceAll(s, ">", "&gt;")
-	s = replaceAll(s, "\"", "&quot;")
-	s = replaceAll(s, "'", "&#39;")
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
-}
-
-func replaceAll(s, old, new string) string {
-	result := ""
-	for i := 0; i < len(s); i++ {
-		if i <= len(s)-len(old) && s[i:i+len(old)] == old {
-			result += new
-			i += len(old) - 1
-		} else {
-			result += string(s[i])
-		}
-	}
-	return result
 }

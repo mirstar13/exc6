@@ -69,8 +69,8 @@ func run() error {
 			ViewsDir:     "./server/views",
 			LogFile:      "log/server.log",
 			UploadsDir:   "./server/uploads",
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
+			ReadTimeout:  5 * time.Minute,
+			WriteTimeout: 0,
 		},
 		Redis: config.RedisConfig{
 			Address:  os.Getenv("REDIS_ADDR"),
