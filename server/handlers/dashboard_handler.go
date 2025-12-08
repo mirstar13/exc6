@@ -22,33 +22,44 @@ func HandleDashboard(csrv *chat.ChatService, qdb *db.Queries) fiber.Handler {
 			return err
 		}
 
-		// Convert usernames to full user objects for template
-		contacts := make([]*db.User, 0, len(contactUsernames))
+		// Convert usernames to contact data with proper string values
+		type ContactData struct {
+			Username   string
+			Icon       string
+			CustomIcon string
+		}
+
+		contacts := make([]ContactData, 0, len(contactUsernames))
 		for _, contactName := range contactUsernames {
 			if user, err := qdb.GetUserByUsername(ctx, contactName); err == nil {
-				contacts = append(contacts, &user)
+				iconValue := ""
+				if user.Icon.Valid {
+					iconValue = user.Icon.String
+				}
+
+				customIconValue := ""
+				if user.CustomIcon.Valid {
+					customIconValue = user.CustomIcon.String
+				}
+
+				contacts = append(contacts, ContactData{
+					Username:   user.Username,
+					Icon:       iconValue,
+					CustomIcon: customIconValue,
+				})
 			}
 		}
 
-		currentUserIcon := ""
-		currentUserCustomIcon := ""
-
 		user, err := qdb.GetUserByUsername(ctx, username)
-		if err == nil {
-			if user.Icon.Valid {
-				currentUserIcon = user.Icon.String
-			}
-
-			if user.CustomIcon.Valid {
-				currentUserCustomIcon = user.CustomIcon.String
-			}
+		if err != nil {
+			return err
 		}
 
 		return c.Render("dashboard", fiber.Map{
-			"Username":              username,
-			"CurrentUserIcon":       currentUserIcon,
-			"CurrentUserCustomIcon": currentUserCustomIcon,
-			"Contacts":              contacts,
+			"Username":   username,
+			"Icon":       user.Icon,
+			"CustomIcon": user.CustomIcon,
+			"Contacts":   contacts,
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"exc6/db"
 	"exc6/services/sessions"
+	"log"
 	"os"
 	"time"
 
@@ -62,7 +63,9 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 			}
 
 			// Update user profile
+			user.CustomIcon.Valid = true
 			user.CustomIcon.String = "/uploads/icons/" + filename
+			user.Icon.Valid = false
 			user.Icon.String = "" // Clear default icon when custom is set
 		} else if selectedIcon != "" {
 			// User selected a default icon
@@ -78,15 +81,7 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 
 		// Handle username update
 		if newUsername != "" && newUsername != oldUsername {
-			// Check if username already exists
-			if _, err := qdb.UpdateUser(dbCtx, db.UpdateUserParams{
-				ID:         user.ID,
-				Username:   newUsername,
-				Icon:       user.Icon,
-				CustomIcon: user.CustomIcon,
-			}); err != nil {
-				return renderProfileEditError(ctx, &user, "Username already taken")
-			}
+			user.Username = newUsername
 		}
 
 		// Update session with new username
@@ -107,13 +102,31 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 		// Small delay for UX (shows loading state)
 		time.Sleep(500 * time.Millisecond)
 
+		// Extract string values from sql.NullString
+		iconValue := ""
+		if user.Icon.Valid {
+			iconValue = user.Icon.String
+		}
+
+		customIconValue := ""
+		if user.CustomIcon.Valid {
+			customIconValue = user.CustomIcon.String
+		}
+
+		qdb.UpdateUser(dbCtx, db.UpdateUserParams{
+			ID:         user.ID,
+			Username:   user.Username,
+			Icon:       user.Icon,
+			CustomIcon: user.CustomIcon,
+		})
+
 		// Render success
 		return ctx.Render("partials/profile-edit", fiber.Map{
 			"Username":   user.Username,
 			"UserId":     user.ID,
 			"Role":       user.Role,
-			"Icon":       user.Icon,
-			"CustomIcon": user.CustomIcon,
+			"Icon":       iconValue,
+			"CustomIcon": customIconValue,
 			"Saved":      true,
 		})
 	}
@@ -134,6 +147,8 @@ func HandleProfileView(qdb *db.Queries) fiber.Handler {
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
+
+		log.Println("user profile view:", user.CustomIcon.String)
 
 		// Check if it's an HTMX request for partial rendering
 		if isHTMXRequest(c) {
@@ -161,12 +176,23 @@ func HandleProfileEdit(qdb *db.Queries) fiber.Handler {
 			return c.Status(fiber.StatusNotFound).SendString("User not found")
 		}
 
+		// Extract string values from sql.NullString
+		iconValue := ""
+		if user.Icon.Valid {
+			iconValue = user.Icon.String
+		}
+
+		customIconValue := ""
+		if user.CustomIcon.Valid {
+			customIconValue = user.CustomIcon.String
+		}
+
 		return c.Render("partials/profile-edit", fiber.Map{
 			"Username":   user.Username,
 			"UserId":     user.ID,
 			"Role":       user.Role,
-			"Icon":       user.Icon,
-			"CustomIcon": user.CustomIcon,
+			"Icon":       iconValue,
+			"CustomIcon": customIconValue,
 			"Saved":      false,
 		})
 	}

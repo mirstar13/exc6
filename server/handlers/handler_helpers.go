@@ -37,12 +37,23 @@ func handleUnauthorized(c *fiber.Ctx) error {
 
 // renderProfileEditError is a helper to render profile edit with error
 func renderProfileEditError(ctx *fiber.Ctx, user *db.User, errorMsg string) error {
+	// Extract string values from sql.NullString
+	iconValue := ""
+	if user.Icon.Valid {
+		iconValue = user.Icon.String
+	}
+
+	customIconValue := ""
+	if user.CustomIcon.Valid {
+		customIconValue = user.CustomIcon.String
+	}
+
 	return ctx.Render("partials/profile-edit", fiber.Map{
 		"Username":   user.Username,
 		"UserId":     user.ID,
 		"Role":       user.Role,
-		"Icon":       user.Icon,
-		"CustomIcon": user.CustomIcon,
+		"Icon":       iconValue,
+		"CustomIcon": customIconValue,
 		"Error":      errorMsg,
 	})
 }
