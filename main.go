@@ -116,7 +116,6 @@ func run() error {
 	// Start server in goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		log.Println("Server starting on :8080")
 		if err := srv.Start(); err != nil {
 			errChan <- err
 		}

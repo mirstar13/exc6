@@ -3,7 +3,7 @@ package db
 import (
 	"crypto/rand"
 	"encoding/json"
-	"errors"
+	"exc6/apperrors"
 	"fmt"
 	"os"
 
@@ -16,13 +16,6 @@ const (
 	BCryptCost        = bcrypt.DefaultCost
 )
 
-var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserAlreadyExists = errors.New("user already exists")
-	ErrInvalidPassword   = errors.New("invalid password")
-	ErrWeakPassword      = errors.New("password too weak")
-)
-
 func OpenUsersDB() (*UsersDB, error) {
 	return OpenUsersDBFromPath("users.json")
 }
@@ -33,18 +26,16 @@ func OpenUsersDBFromPath(path string) (*UsersDB, error) {
 		path:  path,
 	}
 
-	// Try to read existing file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// File doesn't exist, start with empty DB
 			return db, nil
 		}
-		return nil, fmt.Errorf("failed to read database: %w", err)
+		return nil, apperrors.NewDatabaseError("read", err)
 	}
 
 	if err := json.Unmarshal(data, db); err != nil {
-		return nil, fmt.Errorf("failed to parse database: %w", err)
+		return nil, apperrors.NewDatabaseError("parse", err)
 	}
 
 	return db, nil
@@ -56,18 +47,17 @@ func (udb *UsersDB) Save() error {
 
 	data, err := json.MarshalIndent(udb, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal database: %w", err)
+		return apperrors.NewDatabaseError("marshal", err)
 	}
 
-	// Write to temp file first, then rename (atomic operation)
 	tempPath := udb.path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
+		return apperrors.NewDatabaseError("write temp file", err)
 	}
 
 	if err := os.Rename(tempPath, udb.path); err != nil {
-		os.Remove(tempPath) // Clean up temp file
-		return fmt.Errorf("failed to save database: %w", err)
+		os.Remove(tempPath)
+		return apperrors.NewDatabaseError("save", err)
 	}
 
 	return nil
@@ -80,14 +70,14 @@ func (udb *UsersDB) AddUser(user User) error {
 	// Check if user already exists
 	for _, u := range udb.Users {
 		if u.Username == user.Username {
-			return ErrUserAlreadyExists
+			return apperrors.NewUserExists(user.Username)
 		}
 	}
 
 	// Generate user ID
 	userID, err := generateUserID()
 	if err != nil {
-		return fmt.Errorf("failed to generate user ID: %w", err)
+		return apperrors.NewInternalError("failed to generate user ID").WithInternal(err)
 	}
 	user.UserId = userID
 
@@ -114,7 +104,6 @@ func (udb *UsersDB) FindUserByUsername(username string) *User {
 
 	for _, user := range udb.Users {
 		if user.Username == username {
-			// Return a copy to prevent external modifications
 			userCopy := *user
 			return &userCopy
 		}
@@ -128,7 +117,6 @@ func (udb *UsersDB) FindUserById(userID string) *User {
 
 	for _, user := range udb.Users {
 		if user.UserId == userID {
-			// Return a copy to prevent external modifications
 			userCopy := *user
 			return &userCopy
 		}
@@ -145,7 +133,7 @@ func (udb *UsersDB) UpdateUser(username string, updateFn func(*User) error) erro
 			return updateFn(user)
 		}
 	}
-	return ErrUserNotFound
+	return apperrors.NewUserNotFound()
 }
 
 func (udb *UsersDB) GetAllUsernames() []string {
@@ -159,15 +147,14 @@ func (udb *UsersDB) GetAllUsernames() []string {
 	return usernames
 }
 
-// ValidatePasswordStrength checks if password meets minimum requirements
+// ValidatePasswordStrength checks if password meets requirements
 func ValidatePasswordStrength(password string) error {
 	if len(password) < MinPasswordLength {
-		return fmt.Errorf("%w: must be at least %d characters", ErrWeakPassword, MinPasswordLength)
+		return apperrors.NewWeakPassword(fmt.Sprintf("must be at least %d characters", MinPasswordLength))
 	}
 	if len(password) > MaxPasswordLength {
-		return fmt.Errorf("%w: must be less than %d characters", ErrWeakPassword, MaxPasswordLength)
+		return apperrors.NewWeakPassword(fmt.Sprintf("must be less than %d characters", MaxPasswordLength))
 	}
-	// Add more rules as needed (uppercase, numbers, special chars, etc.)
 	return nil
 }
 
@@ -175,7 +162,7 @@ func ValidatePasswordStrength(password string) error {
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), BCryptCost)
 	if err != nil {
-		return "", fmt.Errorf("failed to hash password: %w", err)
+		return "", apperrors.NewInternalError("failed to hash password").WithInternal(err)
 	}
 	return string(hash), nil
 }

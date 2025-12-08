@@ -3,20 +3,11 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
+	"exc6/apperrors"
 	"fmt"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
-)
-
-var (
-	// ErrInvalidFileType indicates unsupported file type
-	ErrInvalidFileType = errors.New("invalid file type")
-	// ErrFileTooLarge indicates file exceeds size limit
-	ErrFileTooLarge = errors.New("file too large")
-	// ErrInvalidFilename indicates suspicious filename
-	ErrInvalidFilename = errors.New("invalid filename")
 )
 
 const (
@@ -44,26 +35,38 @@ var AllowedImageMIMETypes = map[string]bool{
 func ValidateImageUpload(file *multipart.FileHeader) error {
 	// Check file size
 	if file.Size > MaxFileSize {
-		return ErrFileTooLarge
+		return apperrors.NewFileTooLarge(MaxFileSize)
 	}
 
 	// Validate MIME type
 	contentType := file.Header.Get("Content-Type")
 	if !AllowedImageMIMETypes[contentType] {
-		return ErrInvalidFileType
+		allowed := make([]string, 0, len(AllowedImageMIMETypes))
+		for mime := range AllowedImageMIMETypes {
+			allowed = append(allowed, mime)
+		}
+		return apperrors.NewInvalidFileType(allowed)
 	}
 
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	if !AllowedImageExtensions[ext] {
-		return ErrInvalidFileType
+		allowed := make([]string, 0, len(AllowedImageExtensions))
+		for ext := range AllowedImageExtensions {
+			allowed = append(allowed, ext)
+		}
+		return apperrors.NewInvalidFileType(allowed)
 	}
 
 	// Check for path traversal attempts
 	if strings.Contains(file.Filename, "..") ||
 		strings.Contains(file.Filename, "/") ||
 		strings.Contains(file.Filename, "\\") {
-		return ErrInvalidFilename
+		return apperrors.New(
+			apperrors.ErrCodeInvalidFilename,
+			"Filename contains invalid characters",
+			400,
+		)
 	}
 
 	return nil
@@ -74,7 +77,7 @@ func GenerateSecureFilename(userID string, originalExt string) (string, error) {
 	// Generate 16 random bytes
 	randomBytes := make([]byte, 16)
 	if _, err := rand.Read(randomBytes); err != nil {
-		return "", fmt.Errorf("failed to generate random filename: %w", err)
+		return "", apperrors.NewInternalError("Failed to generate secure filename").WithInternal(err)
 	}
 
 	// Clean and validate extension

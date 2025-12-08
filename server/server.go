@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
 	"exc6/server/middleware/limiter"
@@ -38,13 +39,21 @@ func NewServer(cfg *config.Config, udb *db.UsersDB, rdb *redis.Client, csrv *cha
 		return nil, fmt.Errorf("failed to add template functions: %w", err)
 	}
 
-	// Create Fiber app
+	// Setup error handler configuration
+	errorConfig := apperrors.DefaultHandlerConfig()
+	errorConfig.ShowInternalErrors = false // Set to true in dev environment
+	errorConfig.OnError = func(c *fiber.Ctx, err *apperrors.AppError) {
+		// TODO: Add metrics/monitoring here
+		// Example: metrics.RecordError(err.Code, err.StatusCode)
+	}
+
+	// Create Fiber app with custom error handler
 	app := fiber.New(fiber.Config{
 		AppName:      "SecureChat",
 		Views:        engine,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
-		ErrorHandler: customErrorHandler,
+		ErrorHandler: apperrors.Handler(errorConfig),
 	})
 
 	// Serve static uploads
@@ -60,6 +69,9 @@ func NewServer(cfg *config.Config, udb *db.UsersDB, rdb *redis.Client, csrv *cha
 		Capacity:     cfg.RateLimit.Capacity,
 		RefillRate:   cfg.RateLimit.RefillRate,
 		RefillPeriod: cfg.RateLimit.RefillPeriod,
+		LimitReachedHandler: func(c *fiber.Ctx) error {
+			return apperrors.NewRateLimitError()
+		},
 	}))
 
 	srv := &Server{
@@ -148,36 +160,4 @@ func setupLogging(app *fiber.App, logFile string) error {
 	}))
 
 	return nil
-}
-
-// customErrorHandler provides consistent error handling
-func customErrorHandler(c *fiber.Ctx, err error) error {
-	code := fiber.StatusInternalServerError
-	message := "Internal Server Error"
-
-	// Handle Fiber errors
-	var e *fiber.Error
-	if errors.As(err, &e) {
-		code = e.Code
-		message = e.Message
-	}
-
-	// Log the error
-	log.Printf("Error: %v | Path: %s | Method: %s", err, c.Path(), c.Method())
-
-	// Check if HTMX request
-	if c.Get("HX-Request") == "true" {
-		return c.Status(code).SendString(fmt.Sprintf("<div class='error'>%s</div>", message))
-	}
-
-	// Return JSON for API requests
-	if c.Path()[:4] == "/api" {
-		return c.Status(code).JSON(fiber.Map{
-			"error": message,
-			"code":  code,
-		})
-	}
-
-	// Return HTML error page
-	return c.Status(code).SendString(message)
 }

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"exc6/apperrors"
 	"fmt"
 	"time"
 
@@ -15,34 +16,39 @@ func New(config Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Get session ID from cookie
 		sessionID := c.Cookies("session_id")
 		if sessionID == "" {
-			return redirectToLogin(c)
+			return apperrors.NewUnauthorized("No session found")
 		}
 
+		// Retrieve session from Redis
 		sess, err := cfg.SessionManager.GetSession(c.Context(), sessionID)
-		if err != nil || sess == nil {
-			// Session invalid or not found in Redis (expired/revoked)
-			return redirectToLogin(c)
+		if err != nil {
+			return apperrors.NewInternalError("Failed to retrieve session").WithInternal(err)
 		}
 
+		if sess == nil {
+			return apperrors.NewSessionExpired()
+		}
+
+		// Renew session TTL
 		if err := cfg.SessionManager.RenewSession(c.Context(), sessionID); err != nil {
-			return redirectToLogin(c)
+			return apperrors.NewInternalError("Failed to renew session").WithInternal(err)
 		}
 
+		// Store user info in context
 		c.Locals("username", sess.Username)
 		c.Locals("user_id", sess.UserID)
 
-		cfg.SessionManager.UpdateSessionField(c.Context(), sessionID, "last_activity", fmt.Sprintf("%d", time.Now().Unix()))
+		// Update last activity timestamp
+		cfg.SessionManager.UpdateSessionField(
+			c.Context(),
+			sessionID,
+			"last_activity",
+			fmt.Sprintf("%d", time.Now().Unix()),
+		)
 
 		return c.Next()
 	}
-}
-
-func redirectToLogin(c *fiber.Ctx) error {
-	if c.Get("HX-Request") == "true" {
-		c.Set("HX-Redirect", "/")
-		return c.SendStatus(fiber.StatusUnauthorized)
-	}
-	return c.Redirect("/")
 }

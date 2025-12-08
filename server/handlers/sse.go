@@ -119,11 +119,7 @@ func sendSSE(w *bufio.Writer, event, data string) bool {
 
 	// Flush immediately - critical for SSE
 	err = w.Flush()
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 // sendMissedMessages sends any messages that were missed during disconnection

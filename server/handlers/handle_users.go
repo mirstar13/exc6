@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"exc6/apperrors"
 	"exc6/db"
 	"exc6/services/sessions"
 	"log"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var defaultIcons = []string{
@@ -31,38 +31,56 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 		password := ctx.FormValue("password")
 		confirmPassword := ctx.FormValue("confirm_password")
 
+		// Validate password match
 		if password != confirmPassword {
+			err := apperrors.NewPasswordMismatch()
 			return ctx.Render("partials/register", fiber.Map{
-				"Error": "Passwords do not match!",
+				"Error": err.Message,
 			})
 		}
 
-		if len(password) < 6 {
+		// Validate password strength
+		if err := db.ValidatePasswordStrength(password); err != nil {
+			appErr := apperrors.FromError(err)
 			return ctx.Render("partials/register", fiber.Map{
-				"Error": "Password must be at least 6 characters!",
+				"Error": appErr.Message,
 			})
 		}
 
+		// Check if user exists
 		if usr := udb.FindUserByUsername(username); usr != nil {
+			err := apperrors.NewUserExists(username)
 			return ctx.Render("partials/register", fiber.Map{
-				"Error": "Username already exists!",
+				"Error": err.Message,
 			})
 		}
 
-		passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		// Hash password
+		passwordHash, err := db.HashPassword(password)
 		if err != nil {
-			return ctx.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
+			log.Printf("Password hashing error: %v", err)
+			return apperrors.NewInternalError("Failed to create account")
 		}
 
+		// Create user
 		randomIcon := defaultIcons[rand.Intn(len(defaultIcons))]
-
-		udb.AddUser(db.User{
+		if err := udb.AddUser(db.User{
 			Username: username,
-			Password: string(passwordHash),
+			Password: passwordHash,
 			Role:     "member",
 			Icon:     randomIcon,
-		})
-		udb.Save()
+		}); err != nil {
+			appErr := apperrors.FromError(err)
+			return ctx.Render("partials/register", fiber.Map{
+				"Error": appErr.Message,
+			})
+		}
+
+		// Save to database
+		if err := udb.Save(); err != nil {
+			log.Printf("Database save error: %v", err)
+			return apperrors.NewInternalError("Failed to save account")
+		}
 
 		return ctx.Render("partials/account-created", nil)
 	}
@@ -73,15 +91,23 @@ func HandleUserLogin(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Hand
 		username := ctx.FormValue("username")
 		password := ctx.FormValue("password")
 
+		// Validate credentials
 		if !udb.ValidateCredentials(username, password) {
+			err := apperrors.NewInvalidCredentials()
 			return ctx.Render("partials/login", fiber.Map{
-				"Error":    "Invalid credentials!",
+				"Error":    err.Message,
 				"Username": username,
 			})
 		}
 
+		// Get user
 		user := udb.FindUserByUsername(username)
+		if user == nil {
+			// This shouldn't happen after ValidateCredentials passes
+			return apperrors.NewUserNotFound()
+		}
 
+		// Create session
 		sessionID := uuid.NewString()
 		newSession := sessions.NewSession(
 			sessionID,
@@ -91,21 +117,24 @@ func HandleUserLogin(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Hand
 			time.Now().Unix(),
 		)
 
-		err := smngr.SaveSession(ctx.Context(), newSession)
-		if err != nil {
-			log.Println("Error saving session:", err)
-			return ctx.Status(fiber.StatusInternalServerError).SendString("Session Error")
+		// Save session
+		if err := smngr.SaveSession(ctx.Context(), newSession); err != nil {
+			log.Printf("Session save error: %v", err)
+			return apperrors.NewInternalError("Failed to create session")
 		}
 
+		// Set secure cookie
 		ctx.Cookie(&fiber.Cookie{
 			Name:     "session_id",
 			Value:    sessionID,
 			Expires:  time.Now().Add(24 * time.Hour),
 			HTTPOnly: true,
 			SameSite: "Lax",
+			Secure:   false, // TODO: Set to true in production with HTTPS
 			Path:     "/",
 		})
 
+		// Redirect to dashboard
 		ctx.Set("HX-Redirect", "/dashboard")
 		return ctx.SendStatus(fiber.StatusOK)
 	}
@@ -116,9 +145,13 @@ func HandleUserLogout(smngr *sessions.SessionManager) fiber.Handler {
 		sessionID := ctx.Cookies("session_id")
 
 		if sessionID != "" {
-			smngr.DeleteSession(ctx.Context(), sessionID)
+			if err := smngr.DeleteSession(ctx.Context(), sessionID); err != nil {
+				log.Printf("Failed to delete session: %v", err)
+				// Continue anyway - clear the cookie
+			}
 		}
 
+		// Clear cookie
 		ctx.Cookie(&fiber.Cookie{
 			Name:     "session_id",
 			Value:    "",
