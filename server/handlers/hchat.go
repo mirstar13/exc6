@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"exc6/db"
 	"exc6/services/chat"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-func HandleLoadChatWindow(cs *chat.ChatService) fiber.Handler {
+func HandleLoadChatWindow(cs *chat.ChatService, udb *db.UsersDB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		currentUser := c.Locals("username").(string)
 		targetUser := c.Params("contact")
@@ -17,10 +18,21 @@ func HandleLoadChatWindow(cs *chat.ChatService) fiber.Handler {
 			return c.Status(500).SendString("Error fetching chat")
 		}
 
+		// Get contact's user info for icon
+		contactUser := udb.FindUserByUsername(targetUser)
+		contactIcon := ""
+		contactCustomIcon := ""
+		if contactUser != nil {
+			contactIcon = contactUser.Icon
+			contactCustomIcon = contactUser.CustomIcon
+		}
+
 		return c.Render("partials/chat-window", fiber.Map{
-			"Me":       currentUser,
-			"Other":    targetUser,
-			"Messages": history,
+			"Me":                currentUser,
+			"Other":             targetUser,
+			"Messages":          history,
+			"ContactIcon":       contactIcon,
+			"ContactCustomIcon": contactCustomIcon,
 		})
 	}
 }

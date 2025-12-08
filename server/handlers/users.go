@@ -5,6 +5,7 @@ import (
 	"exc6/services/sessions"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,14 +16,40 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var defaultIcons = []string{
+	"gradient-blue",
+	"gradient-purple",
+	"gradient-green",
+	"gradient-orange",
+	"gradient-cyan",
+	"gradient-rose",
+	"gradient-indigo",
+	"gradient-amber",
+	"gradient-teal",
+	"solid-signal",
+}
+
 func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		username := ctx.FormValue("username")
 		password := ctx.FormValue("password")
+		confirmPassword := ctx.FormValue("confirm_password")
+
+		if password != confirmPassword {
+			return ctx.Render("partials/register", fiber.Map{
+				"Error": "Passwords do not match!",
+			})
+		}
+
+		if len(password) < 6 {
+			return ctx.Render("partials/register", fiber.Map{
+				"Error": "Password must be at least 6 characters!",
+			})
+		}
 
 		if usr := udb.FindUserByUsername(username); usr != nil {
-			return ctx.Render("index", fiber.Map{
-				"Error": "Username already exists! Try 'admin' instead.",
+			return ctx.Render("partials/register", fiber.Map{
+				"Error": "Username already exists!",
 			})
 		}
 
@@ -31,7 +58,14 @@ func HandleUserRegister(udb *db.UsersDB) fiber.Handler {
 			return ctx.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
 		}
 
-		udb.AddUser(db.User{Username: username, Password: string(passwordHash), Role: "member"})
+		randomIcon := defaultIcons[rand.Intn(len(defaultIcons))]
+
+		udb.AddUser(db.User{
+			Username: username,
+			Password: string(passwordHash),
+			Role:     "member",
+			Icon:     randomIcon,
+		})
 		udb.Save()
 
 		return ctx.Render("partials/account-created", nil)
@@ -45,7 +79,8 @@ func HandleUserLogin(udb *db.UsersDB, smngr *sessions.SessionManager) fiber.Hand
 
 		if !udb.ValidateCredentials(username, password) {
 			return ctx.Render("partials/login", fiber.Map{
-				"Error": "Invalid credentials!",
+				"Error":    "Invalid credentials!",
+				"Username": username,
 			})
 		}
 
@@ -93,39 +128,59 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 
 		file, err := ctx.FormFile("custom_icon")
 		if err == nil && file != nil {
-			// Validate file size (5MB)
 			if file.Size > 5*1024*1024 {
 				return ctx.Render("partials/profile-edit", fiber.Map{
-					"Username": oldUsername,
-					"Icon":     user.Icon,
-					"Error":    "File size must be less than 5MB",
+					"Username":   oldUsername,
+					"UserId":     user.UserId,
+					"Role":       user.Role,
+					"Icon":       user.Icon,
+					"CustomIcon": user.CustomIcon,
+					"Error":      "File size must be less than 5MB",
 				})
 			}
 
 			contentType := file.Header.Get("Content-Type")
 			if !strings.HasPrefix(contentType, "image/") {
 				return ctx.Render("partials/profile-edit", fiber.Map{
-					"Username": oldUsername,
-					"Icon":     user.Icon,
-					"Error":    "Only image files are allowed",
+					"Username":   oldUsername,
+					"UserId":     user.UserId,
+					"Role":       user.Role,
+					"Icon":       user.Icon,
+					"CustomIcon": user.CustomIcon,
+					"Error":      "Only image files are allowed",
 				})
 			}
 
-			filename := fmt.Sprintf("%s_%d%s", user.UserId, time.Now().Unix(), filepath.Ext(file.Filename))
-			filepath := fmt.Sprintf("./uploads/icons/%s", filename)
+			uploadDir := "./server/uploads/icons"
+			os.MkdirAll(uploadDir, 0755)
 
-			os.MkdirAll("./uploads/icons", 0755)
-			if err := ctx.SaveFile(file, filepath); err != nil {
+			filename := fmt.Sprintf("%s_%d%s", user.UserId, time.Now().Unix(), filepath.Ext(file.Filename))
+			fullPath := filepath.Join(uploadDir, filename)
+
+			if err := ctx.SaveFile(file, fullPath); err != nil {
+				log.Printf("Failed to save file: %v", err)
 				return ctx.Render("partials/profile-edit", fiber.Map{
-					"Username": oldUsername,
-					"Icon":     user.Icon,
-					"Error":    "Failed to upload file",
+					"Username":   oldUsername,
+					"UserId":     user.UserId,
+					"Role":       user.Role,
+					"Icon":       user.Icon,
+					"CustomIcon": user.CustomIcon,
+					"Error":      "Failed to upload file",
 				})
+			}
+
+			if user.CustomIcon != "" {
+				oldPath := "." + user.CustomIcon
+				os.Remove(oldPath)
 			}
 
 			user.CustomIcon = "/uploads/icons/" + filename
 			user.Icon = ""
 		} else if selectedIcon != "" {
+			if user.CustomIcon != "" {
+				oldPath := "." + user.CustomIcon
+				os.Remove(oldPath)
+			}
 			user.Icon = selectedIcon
 			user.CustomIcon = ""
 		}
@@ -134,6 +189,8 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 			if usr := udb.FindUserByUsername(newUsername); usr != nil {
 				return ctx.Render("partials/profile-edit", fiber.Map{
 					"Username":   oldUsername,
+					"UserId":     user.UserId,
+					"Role":       user.Role,
 					"Icon":       user.Icon,
 					"CustomIcon": user.CustomIcon,
 					"Error":      "Username already exists",
@@ -143,8 +200,11 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 		}
 
 		if err := udb.Save(); err != nil {
+			log.Printf("Failed to save user database: %v", err)
 			return ctx.Render("partials/profile-edit", fiber.Map{
 				"Username":   user.Username,
+				"UserId":     user.UserId,
+				"Role":       user.Role,
 				"Icon":       user.Icon,
 				"CustomIcon": user.CustomIcon,
 				"Error":      "Failed to save changes",
@@ -162,10 +222,13 @@ func HandleUserProfileUpdate(udb *db.UsersDB, smngr *sessions.SessionManager) fi
 
 		ctx.Locals("username", user.Username)
 
+		// Small delay for better UX
 		time.Sleep(500 * time.Millisecond)
 
 		return ctx.Render("partials/profile-edit", fiber.Map{
 			"Username":   user.Username,
+			"UserId":     user.UserId,
+			"Role":       user.Role,
 			"Icon":       user.Icon,
 			"CustomIcon": user.CustomIcon,
 			"Saved":      true,

@@ -10,6 +10,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// ContactInfo holds contact display information
+type ContactInfo struct {
+	Username   string
+	Icon       string
+	CustomIcon string
+}
+
 var RegisterRoutes = func(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatService, smngr *sessions.SessionManager) {
 	app.Get("/", func(ctx *fiber.Ctx) error {
 		return ctx.Render("homepage", fiber.Map{
@@ -68,14 +75,28 @@ var RegisterRoutes = func(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatServic
 
 	authed.Get("/dashboard", func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
-		contacts := csrv.GetContacts(username)
+		contactUsernames := csrv.GetContacts(username)
+
+		// Build contact info with icons
+		contacts := make([]ContactInfo, 0, len(contactUsernames))
+		for _, contactUsername := range contactUsernames {
+			user := udb.FindUserByUsername(contactUsername)
+			if user != nil {
+				contacts = append(contacts, ContactInfo{
+					Username:   user.Username,
+					Icon:       user.Icon,
+					CustomIcon: user.CustomIcon,
+				})
+			}
+		}
+
 		return c.Render("dashboard", fiber.Map{
 			"Username": username,
 			"Contacts": contacts,
 		})
 	})
 
-	authed.Get("/chat/:contact", handlers.HandleLoadChatWindow(csrv))
+	authed.Get("/chat/:contact", handlers.HandleLoadChatWindow(csrv, udb))
 	authed.Post("/chat/:contact", handlers.HandleSendMessage(csrv))
 
 	authed.Get("/sse/:contact", handlers.HandleSSE(csrv))
@@ -98,17 +119,21 @@ var RegisterRoutes = func(app *fiber.App, udb *db.UsersDB, csrv *chat.ChatServic
 
 		if c.Get("HX-Request") == "true" {
 			return c.Render("partials/profile-edit", fiber.Map{
-				"Username": user.Username,
-				"UserId":   user.UserId,
-				"Role":     user.Role,
-				"Saved":    false,
+				"Username":   user.Username,
+				"UserId":     user.UserId,
+				"Role":       user.Role,
+				"Icon":       user.Icon,
+				"CustomIcon": user.CustomIcon,
+				"Saved":      false,
 			})
 		}
 		return c.Render("partials/profile-edit", fiber.Map{
-			"Username": user.Username,
-			"UserId":   user.UserId,
-			"Role":     user.Role,
-			"Saved":    false,
+			"Username":   user.Username,
+			"UserId":     user.UserId,
+			"Role":       user.Role,
+			"Icon":       user.Icon,
+			"CustomIcon": user.CustomIcon,
+			"Saved":      false,
 		})
 	})
 

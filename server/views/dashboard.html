@@ -16,14 +16,14 @@
                     },
                     colors: {
                         signal: {
-                            bg: '#121212',          // Main app background
-                            sidebar: '#181818',     // Sidebar background
-                            header: '#1E1E1E',      // Headers
-                            surface: '#2C2C2C',     // Input fields
-                            hover: '#333333',       // Hover states
-                            blue: '#2C6BED',        // Signal Blue
+                            bg: '#121212',          
+                            sidebar: '#181818',     
+                            header: '#1E1E1E',      
+                            surface: '#2C2C2C',     
+                            hover: '#333333',       
+                            blue: '#2C6BED',        
                             bluehover: '#3876F3',
-                            bubble: '#303030',      // Received message bubble
+                            bubble: '#303030',      
                             text: {
                                 main: '#F2F2F2',
                                 sub: '#848586',
@@ -62,7 +62,6 @@
             background-color: #4a4a4a;
         }
         
-        /* Firefox */
         .custom-scrollbar {
             scrollbar-width: thin;
             scrollbar-color: #333 transparent;
@@ -106,15 +105,40 @@
                 {{range .Contacts}}
                     <div class="px-2">
                         <div class="px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                             hx-get="/chat/{{.}}" 
+                             hx-get="/chat/{{.Username}}" 
                              hx-target="#main-chat-area" 
                              hx-swap="innerHTML">
-                            <div class="w-12 h-12 bg-gradient-to-br from-signal-blue to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
-                                {{slice . 0 1}}
-                            </div>
+                            
+                            {{if .CustomIcon}}
+                                <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5">
+                                    <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                                </div>
+                            {{else}}
+                                {{$iconClass := "bg-gradient-to-br from-signal-blue to-blue-700"}}
+                                {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                                {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                                {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                                {{if eq .Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                                {{if eq .Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                                {{if eq .Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                                {{if eq .Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                                {{if eq .Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                                {{if eq .Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                                {{if eq .Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                                {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                                {{if eq .Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                                {{if eq .Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                                {{if eq .Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                                {{if eq .Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                                
+                                <div class="w-12 h-12 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
+                                    {{slice .Username 0 1}}
+                                </div>
+                            {{end}}
+                            
                             <div class="flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                 <div class="flex justify-between items-baseline mb-0.5">
-                                    <h3 class="font-medium text-signal-text-main truncate">{{.}}</h3>
+                                    <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
                                     <span class="text-xs text-signal-text-sub">Now</span>
                                 </div>
                                 <p class="text-sm text-signal-text-sub truncate">Tap to chat securely</p>

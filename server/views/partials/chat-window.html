@@ -2,9 +2,33 @@
     
     <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 sticky top-0 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
-            <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
-                {{slice .Other 0 1}}
-            </div>
+            {{if .ContactCustomIcon}}
+                <div class="w-10 h-10 rounded-full shadow-sm shrink-0 overflow-hidden ring-2 ring-white/5">
+                    <img src="{{.ContactCustomIcon}}" alt="{{.Other}}" class="w-full h-full object-cover">
+                </div>
+            {{else}}
+                {{$iconClass := "bg-gradient-to-br from-purple-600 to-blue-600"}}
+                {{if eq .ContactIcon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                {{if eq .ContactIcon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                {{if eq .ContactIcon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                {{if eq .ContactIcon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                {{if eq .ContactIcon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                {{if eq .ContactIcon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                {{if eq .ContactIcon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                {{if eq .ContactIcon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                
+                <div class="w-10 h-10 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
+                    {{slice .Other 0 1}}
+                </div>
+            {{end}}
+            
             <div class="flex flex-col min-w-0">
                 <span class="text-signal-text-main font-semibold leading-tight truncate">{{.Other}}</span>
                 <span class="text-xs text-signal-text-sub">Signal • Mobile</span>
@@ -27,7 +51,6 @@
                 <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
             </div>
             
-            <!-- Message list with SSE connection -->
             <div id="message-list" 
                  class="flex flex-col gap-1"
                  hx-ext="sse"
