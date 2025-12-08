@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -17,6 +18,9 @@ import (
 const (
 	RecentMessagesCacheSize = 100
 	MessageCacheTTL         = 24 * time.Hour
+	MessageBufferSize       = 1000 // Bounded buffer to prevent memory leaks
+	BatchFlushSize          = 100  // Flush after this many messages
+	BatchFlushInterval      = 100 * time.Millisecond
 )
 
 type ChatService struct {
@@ -25,6 +29,9 @@ type ChatService struct {
 	producer      *kafka.Producer
 	kafkaTopic    string
 	messageBuffer chan *ChatMessage
+	shutdownOnce  sync.Once
+	shutdownChan  chan struct{}
+	wg            sync.WaitGroup
 }
 
 func NewChatService(rdb *redis.Client, udb *db.UsersDB, kafkaAddr string) (*ChatService, error) {
@@ -42,24 +49,42 @@ func NewChatService(rdb *redis.Client, udb *db.UsersDB, kafkaAddr string) (*Chat
 		udb:           udb,
 		producer:      p,
 		kafkaTopic:    "chat-history",
-		messageBuffer: make(chan *ChatMessage, 1000),
+		messageBuffer: make(chan *ChatMessage, MessageBufferSize), // FIXED: Bounded buffer
+		shutdownChan:  make(chan struct{}),
 	}
 
+	// Start background message writer
+	cs.wg.Add(1)
 	go cs.messageWriter()
 
 	return cs, nil
 }
 
 func (cs *ChatService) messageWriter() {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	defer cs.wg.Done()
+
+	ticker := time.NewTicker(BatchFlushInterval)
 	defer ticker.Stop()
 
-	batch := make([]*kafka.Message, 0, 100)
+	batch := make([]*kafka.Message, 0, BatchFlushSize)
 
 	for {
 		select {
-		case msg := <-cs.messageBuffer:
-			msgJSON, _ := json.Marshal(msg)
+		case msg, ok := <-cs.messageBuffer:
+			if !ok {
+				// Channel closed, flush remaining and exit
+				if len(batch) > 0 {
+					cs.flushBatch(batch)
+				}
+				return
+			}
+
+			msgJSON, err := json.Marshal(msg)
+			if err != nil {
+				log.Printf("Failed to marshal message: %v", err)
+				continue
+			}
+
 			chatKey := getChatKey(msg.FromID, msg.ToID)
 			topic := cs.kafkaTopic
 
@@ -69,16 +94,25 @@ func (cs *ChatService) messageWriter() {
 				Value:          msgJSON,
 			})
 
-			if len(batch) >= 100 {
+			// Flush when batch is full
+			if len(batch) >= BatchFlushSize {
 				cs.flushBatch(batch)
 				batch = batch[:0]
 			}
 
 		case <-ticker.C:
+			// Periodic flush of pending messages
 			if len(batch) > 0 {
 				cs.flushBatch(batch)
 				batch = batch[:0]
 			}
+
+		case <-cs.shutdownChan:
+			// Graceful shutdown: flush remaining messages
+			if len(batch) > 0 {
+				cs.flushBatch(batch)
+			}
+			return
 		}
 	}
 }
@@ -89,6 +123,7 @@ func (cs *ChatService) flushBatch(batch []*kafka.Message) {
 			log.Printf("Failed to produce message to Kafka: %v", err)
 		}
 	}
+	// Wait for messages to be delivered
 	cs.producer.Flush(5000)
 }
 
@@ -130,12 +165,22 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 		Timestamp: time.Now().Unix(),
 	}
 
+	// Cache message in Redis
 	if err := cs.cacheMessage(ctx, msg); err != nil {
 		log.Printf("Failed to cache message: %v", err)
 	}
 
-	cs.messageBuffer <- msg
+	// Send to buffer (non-blocking with timeout)
+	select {
+	case cs.messageBuffer <- msg:
+		// Successfully buffered
+	case <-time.After(1 * time.Second):
+		// Buffer is full, log error but don't block
+		log.Printf("Message buffer full, dropping message: %s", msg.MessageID)
+		return nil, fmt.Errorf("message buffer full")
+	}
 
+	// Publish to Redis for real-time delivery
 	msgJSON, _ := json.Marshal(msg)
 	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
 		log.Printf("Failed to publish message: %v", err)
@@ -154,13 +199,16 @@ func (cs *ChatService) cacheMessage(ctx context.Context, msg *ChatMessage) error
 
 	pipe := cs.rdb.Pipeline()
 
+	// Add message to sorted set
 	pipe.ZAdd(ctx, conversationKey, redis.Z{
 		Score:  float64(msg.Timestamp),
 		Member: msgJSON,
 	})
 
+	// Keep only recent messages
 	pipe.ZRemRangeByRank(ctx, conversationKey, 0, -RecentMessagesCacheSize-1)
 
+	// Set expiration
 	pipe.Expire(ctx, conversationKey, MessageCacheTTL)
 
 	_, err = pipe.Exec(ctx)
@@ -187,8 +235,21 @@ func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*
 	return messages, nil
 }
 
+// Close performs graceful shutdown of the chat service
 func (cs *ChatService) Close() error {
-	cs.producer.Close()
-	close(cs.messageBuffer)
+	cs.shutdownOnce.Do(func() {
+		// Signal shutdown
+		close(cs.shutdownChan)
+
+		// Close message buffer
+		close(cs.messageBuffer)
+
+		// Wait for writer to finish
+		cs.wg.Wait()
+
+		// Close Kafka producer
+		cs.producer.Close()
+	})
+
 	return nil
 }

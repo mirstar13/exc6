@@ -116,15 +116,17 @@ func (smngr *SessionManager) ListActiveSessions(ctx context.Context) ([]*Session
 	return sessions, nil
 }
 
-func (smngr *SessionManager) UpdateSessionField(ctx context.Context, userID, field, value string) error {
-	sessionKey := "session:" + userID
+// UpdateSessionField updates a specific field in a session
+// FIXED: Changed first parameter from userID to sessionID
+func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, field, value string) error {
+	sessionKey := "session:" + sessionID
 
 	exists, err := smngr.rdb.Exists(ctx, sessionKey).Result()
 	if err != nil {
 		return err
 	}
 	if exists == 0 {
-		return nil
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
 	return smngr.rdb.HSet(ctx, sessionKey, field, value).Err()
@@ -138,11 +140,15 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 		return err
 	}
 	if exists == 0 {
-		return fmt.Errorf("session not found")
+		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	smngr.rdb.HSet(ctx, sessionKey, "last_activity", time.Now().Unix())
+	// Update last activity timestamp
+	if err := smngr.rdb.HSet(ctx, sessionKey, "last_activity", time.Now().Unix()).Err(); err != nil {
+		return err
+	}
 
+	// Renew TTL
 	return smngr.rdb.Expire(ctx, sessionKey, 24*time.Hour).Err()
 }
 
