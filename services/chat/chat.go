@@ -18,9 +18,14 @@ import (
 const (
 	RecentMessagesCacheSize = 100
 	MessageCacheTTL         = 24 * time.Hour
-	MessageBufferSize       = 1000 // Bounded buffer to prevent memory leaks
-	BatchFlushSize          = 100  // Flush after this many messages
+	MessageBufferSize       = 1000
+	BatchFlushSize          = 100
 	BatchFlushInterval      = 100 * time.Millisecond
+
+	// New: Persistent queue configuration
+	PersistentQueueKey = "chat:pending_messages"
+	MaxRetries         = 3
+	RetryBackoff       = 5 * time.Second
 )
 
 type ChatService struct {
@@ -32,6 +37,15 @@ type ChatService struct {
 	shutdownOnce  sync.Once
 	shutdownChan  chan struct{}
 	wg            sync.WaitGroup
+
+	// New: Metrics for monitoring
+	metrics struct {
+		mu              sync.RWMutex
+		messagesQueued  int64
+		messagesSent    int64
+		messagesFailed  int64
+		messagesDropped int64
+	}
 }
 
 func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kafkaAddr string) (*ChatService, error) {
@@ -39,6 +53,8 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		"bootstrap.servers": kafkaAddr,
 		"client.id":         "go-fiber-dashboard",
 		"acks":              "all",
+		"retries":           3,
+		"retry.backoff.ms":  100,
 	})
 	if err != nil {
 		return nil, err
@@ -53,20 +69,195 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		shutdownChan:  make(chan struct{}),
 	}
 
-	// Start background message writer
-	cs.wg.Add(1)
+	// Start background workers
+	cs.wg.Add(2)
 	go cs.messageWriter()
+	go cs.persistentQueueWorker(ctx)
 
 	return cs, nil
 }
 
+// SendMessage now persists to Redis first for durability
+func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string) (*ChatMessage, error) {
+	msg := &ChatMessage{
+		MessageID: uuid.NewString(),
+		FromID:    from,
+		ToID:      to,
+		Content:   content,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// 1. Cache message in Redis immediately for read consistency
+	if err := cs.cacheMessage(ctx, msg); err != nil {
+		logger.WithFields(map[string]any{
+			"message_id": msg.MessageID,
+			"from":       msg.FromID,
+			"to":         msg.ToID,
+			"error":      err.Error(),
+		}).Error("Failed to cache message")
+	}
+
+	// 2. Try to buffer message (non-blocking)
+	select {
+	case cs.messageBuffer <- msg:
+		cs.incrementMetric("queued")
+	default:
+		// Buffer full - persist to Redis queue instead
+		logger.WithFields(map[string]any{
+			"message_id":  msg.MessageID,
+			"buffer_size": len(cs.messageBuffer),
+		}).Warn("Message buffer full, persisting to Redis queue")
+
+		if err := cs.persistMessageToQueue(ctx, msg); err != nil {
+			cs.incrementMetric("failed")
+			return nil, fmt.Errorf("failed to persist message: %w", err)
+		}
+		cs.incrementMetric("queued")
+	}
+
+	// 3. Publish to Redis Pub/Sub for real-time delivery (best effort)
+	msgJSON, _ := json.Marshal(msg)
+	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
+		logger.WithFields(map[string]any{
+			"message_id": msg.MessageID,
+			"channel":    "chat:messages",
+			"error":      err.Error(),
+		}).Warn("Failed to publish message to Redis Pub/Sub")
+		// Don't fail - message is still queued
+	}
+
+	return msg, nil
+}
+
+// persistMessageToQueue stores messages in Redis list when buffer is full
+func (cs *ChatService) persistMessageToQueue(ctx context.Context, msg *ChatMessage) error {
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	// Use RPUSH to add to end of queue
+	return cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON).Err()
+}
+
+// persistentQueueWorker processes messages from Redis queue
+func (cs *ChatService) persistentQueueWorker(ctx context.Context) {
+	defer cs.wg.Done()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			cs.processQueuedMessages(ctx)
+		case <-cs.shutdownChan:
+			// Final drain on shutdown
+			cs.processQueuedMessages(ctx)
+			return
+		}
+	}
+}
+
+func (cs *ChatService) processQueuedMessages(ctx context.Context) {
+	// Check queue length
+	queueLen, err := cs.rdb.LLen(ctx, PersistentQueueKey).Result()
+	if err != nil || queueLen == 0 {
+		return
+	}
+
+	logger.WithField("queue_length", queueLen).Debug("Processing queued messages")
+
+	// Process up to 100 messages at a time
+	count := int64(100)
+	if queueLen < count {
+		count = queueLen
+	}
+
+	// Pop messages from queue (LPOP is atomic)
+	for i := int64(0); i < count; i++ {
+		msgJSON, err := cs.rdb.LPop(ctx, PersistentQueueKey).Result()
+		if err != nil {
+			break
+		}
+
+		var msg ChatMessage
+		if err := json.Unmarshal([]byte(msgJSON), &msg); err != nil {
+			logger.WithField("error", err).Error("Failed to unmarshal queued message")
+			continue
+		}
+
+		// Send to Kafka with retries
+		if err := cs.sendToKafkaWithRetry(&msg, MaxRetries); err != nil {
+			logger.WithFields(map[string]any{
+				"message_id": msg.MessageID,
+				"error":      err.Error(),
+			}).Error("Failed to send queued message after retries")
+
+			// Put back in queue for later retry
+			msgJSON, _ := json.Marshal(msg)
+			cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON)
+			cs.incrementMetric("failed")
+			break // Stop processing to avoid cascading failures
+		}
+
+		cs.incrementMetric("sent")
+	}
+}
+
+// sendToKafkaWithRetry attempts to send message to Kafka with exponential backoff
+func (cs *ChatService) sendToKafkaWithRetry(msg *ChatMessage, maxRetries int) error {
+	msgJSON, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	chatKey := getChatKey(msg.FromID, msg.ToID)
+	topic := cs.kafkaTopic
+
+	kafkaMsg := &kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(chatKey),
+		Value:          msgJSON,
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		deliveryChan := make(chan kafka.Event, 1)
+
+		if err := cs.producer.Produce(kafkaMsg, deliveryChan); err != nil {
+			lastErr = err
+			time.Sleep(RetryBackoff * time.Duration(attempt+1))
+			continue
+		}
+
+		// Wait for delivery confirmation (with timeout)
+		select {
+		case e := <-deliveryChan:
+			m := e.(*kafka.Message)
+			if m.TopicPartition.Error != nil {
+				lastErr = m.TopicPartition.Error
+				time.Sleep(RetryBackoff * time.Duration(attempt+1))
+				continue
+			}
+			return nil // Success!
+		case <-time.After(5 * time.Second):
+			lastErr = fmt.Errorf("delivery timeout")
+			continue
+		}
+	}
+
+	return fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// messageWriter processes messages from buffer
 func (cs *ChatService) messageWriter() {
 	defer cs.wg.Done()
 
 	ticker := time.NewTicker(BatchFlushInterval)
 	defer ticker.Stop()
 
-	batch := make([]*kafka.Message, 0, BatchFlushSize)
+	batch := make([]*ChatMessage, 0, BatchFlushSize)
 
 	for {
 		select {
@@ -79,23 +270,7 @@ func (cs *ChatService) messageWriter() {
 				return
 			}
 
-			msgJSON, err := json.Marshal(msg)
-			if err != nil {
-				logger.WithFields(map[string]any{
-					"message_id": msg.MessageID,
-					"error":      err.Error(),
-				}).Error("Failed to marshal message")
-				continue
-			}
-
-			chatKey := getChatKey(msg.FromID, msg.ToID)
-			topic := cs.kafkaTopic
-
-			batch = append(batch, &kafka.Message{
-				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Key:            []byte(chatKey),
-				Value:          msgJSON,
-			})
+			batch = append(batch, msg)
 
 			// Flush when batch is full
 			if len(batch) >= BatchFlushSize {
@@ -120,19 +295,66 @@ func (cs *ChatService) messageWriter() {
 	}
 }
 
-func (cs *ChatService) flushBatch(batch []*kafka.Message) {
+func (cs *ChatService) flushBatch(batch []*ChatMessage) {
+	successCount := 0
+
 	for _, msg := range batch {
-		if err := cs.producer.Produce(msg, nil); err != nil {
+		if err := cs.sendToKafkaWithRetry(msg, MaxRetries); err != nil {
 			logger.WithFields(map[string]any{
-				"topic": *msg.TopicPartition.Topic,
-				"error": err.Error(),
-			}).Error("Failed to produce message to Kafka")
+				"message_id": msg.MessageID,
+				"error":      err.Error(),
+			}).Error("Failed to send message in batch")
+
+			// Persist failed message to Redis queue for retry
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			msgJSON, _ := json.Marshal(msg)
+			cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON)
+			cancel()
+
+			cs.incrementMetric("failed")
+		} else {
+			successCount++
+			cs.incrementMetric("sent")
 		}
 	}
-	// Wait for messages to be delivered
-	cs.producer.Flush(5000)
+
+	logger.WithFields(map[string]any{
+		"batch_size": len(batch),
+		"success":    successCount,
+		"failed":     len(batch) - successCount,
+	}).Debug("Batch processed")
 }
 
+// Metrics helpers
+func (cs *ChatService) incrementMetric(name string) {
+	cs.metrics.mu.Lock()
+	defer cs.metrics.mu.Unlock()
+
+	switch name {
+	case "queued":
+		cs.metrics.messagesQueued++
+	case "sent":
+		cs.metrics.messagesSent++
+	case "failed":
+		cs.metrics.messagesFailed++
+	case "dropped":
+		cs.metrics.messagesDropped++
+	}
+}
+
+func (cs *ChatService) GetMetrics() map[string]int64 {
+	cs.metrics.mu.RLock()
+	defer cs.metrics.mu.RUnlock()
+
+	return map[string]int64{
+		"queued":  cs.metrics.messagesQueued,
+		"sent":    cs.metrics.messagesSent,
+		"failed":  cs.metrics.messagesFailed,
+		"dropped": cs.metrics.messagesDropped,
+	}
+}
+
+// Rest of the methods remain the same...
 func (cs *ChatService) SubscribeToMessages(ctx context.Context) *redis.PubSub {
 	return cs.rdb.Subscribe(ctx, "chat:messages")
 }
@@ -149,73 +371,6 @@ func (cs *ChatService) getConversationKey(user1, user2 string) string {
 	return fmt.Sprintf("chat:conv:%s:%s", users[0], users[1])
 }
 
-func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
-	var contacts []string
-
-	// Use background context with timeout for DB query
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	usernames, err := cs.qdb.GetAllUsernames(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, username := range usernames {
-		if username != currentUsername {
-			contacts = append(contacts, username)
-		}
-	}
-
-	return contacts, nil
-}
-
-func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string) (*ChatMessage, error) {
-	msg := &ChatMessage{
-		MessageID: uuid.NewString(),
-		FromID:    from,
-		ToID:      to,
-		Content:   content,
-		Timestamp: time.Now().Unix(),
-	}
-
-	// Cache message in Redis
-	if err := cs.cacheMessage(ctx, msg); err != nil {
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"from":       msg.FromID,
-			"to":         msg.ToID,
-			"error":      err.Error(),
-		}).Error("Failed to cache message")
-	}
-
-	// Send to buffer (non-blocking with timeout)
-	select {
-	case cs.messageBuffer <- msg:
-		// Successfully buffered
-	case <-time.After(1 * time.Second):
-		// Buffer is full, log error but don't block
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"from":       msg.FromID,
-			"to":         msg.ToID,
-		}).Error("Message buffer full, dropping message")
-		return nil, fmt.Errorf("message buffer full")
-	}
-
-	// Publish to Redis for real-time delivery
-	msgJSON, _ := json.Marshal(msg)
-	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"channel":    "chat:messages",
-			"error":      err.Error(),
-		}).Error("Failed to publish message to Redis")
-	}
-
-	return msg, nil
-}
-
 func (cs *ChatService) cacheMessage(ctx context.Context, msg *ChatMessage) error {
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
@@ -225,17 +380,11 @@ func (cs *ChatService) cacheMessage(ctx context.Context, msg *ChatMessage) error
 	conversationKey := cs.getConversationKey(msg.FromID, msg.ToID)
 
 	pipe := cs.rdb.Pipeline()
-
-	// Add message to sorted set
 	pipe.ZAdd(ctx, conversationKey, redis.Z{
 		Score:  float64(msg.Timestamp),
 		Member: msgJSON,
 	})
-
-	// Keep only recent messages
 	pipe.ZRemRangeByRank(ctx, conversationKey, 0, -RecentMessagesCacheSize-1)
-
-	// Set expiration
 	pipe.Expire(ctx, conversationKey, MessageCacheTTL)
 
 	_, err = pipe.Exec(ctx)
@@ -262,20 +411,42 @@ func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*
 	return messages, nil
 }
 
-// Close performs graceful shutdown of the chat service
+func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
+	var contacts []string
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	usernames, err := cs.qdb.GetAllUsernames(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, username := range usernames {
+		if username != currentUsername {
+			contacts = append(contacts, username)
+		}
+	}
+
+	return contacts, nil
+}
+
+// Close performs graceful shutdown
 func (cs *ChatService) Close() error {
 	cs.shutdownOnce.Do(func() {
-		// Signal shutdown
+		// Signal shutdown to all workers
 		close(cs.shutdownChan)
 
-		// Close message buffer
-		close(cs.messageBuffer)
-
-		// Wait for writer to finish
+		// Wait for workers to finish processing
 		cs.wg.Wait()
+
+		// Now safe to close message buffer
+		close(cs.messageBuffer)
 
 		// Close Kafka producer
 		cs.producer.Close()
+
+		logger.Info("Chat service shutdown complete")
 	})
 
 	return nil

@@ -40,11 +40,13 @@ func HandleSSE(cs *chat.ChatService) fiber.Handler {
 
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 			// CRITICAL: Remove ALL timeouts for SSE connections
-			if conn := c.Context().Conn(); conn != nil {
-				// Set to zero value = no deadline
-				conn.SetReadDeadline(time.Time{})
-				conn.SetWriteDeadline(time.Time{})
-			}
+			/*
+				if conn := c.Context().Conn(); conn != nil {
+					// Set to zero value = no deadline
+					conn.SetReadDeadline(time.Time{})
+					conn.SetWriteDeadline(time.Time{})
+				}
+			*/
 
 			username := usernameCopy
 			targetContact := targetContactCopy

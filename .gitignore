@@ -35,3 +35,4 @@ nul
 
 # useless files
 server/uploads/icons/*
+./claude

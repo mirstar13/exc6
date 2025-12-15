@@ -31,8 +31,13 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 		file, err := ctx.FormFile("custom_icon")
 		if err == nil && file != nil {
 			// Validate the upload
-			if err := ValidateImageUpload(file); err != nil {
+			valRes, err := ValidateImageUploadStrict(file)
+			if err != nil {
 				return renderProfileEditError(ctx, &user, err.Error())
+			}
+
+			if !valRes.Valid {
+				return renderProfileEditError(ctx, &user, "Invalid file upload")
 			}
 
 			// Generate secure filename
