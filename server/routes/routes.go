@@ -3,16 +3,17 @@ package routes
 import (
 	"exc6/db"
 	"exc6/services/chat"
+	"exc6/services/friends"
 	"exc6/services/sessions"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, smngr *sessions.SessionManager) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, smngr *sessions.SessionManager) {
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
-	authRoutes := NewAuthRoutes(db, csrv, smngr)
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, smngr)
 	apiRoutes := NewAPIRoutes()
 
 	// Register public routes (no auth required)

@@ -1,3 +1,9 @@
+run: build docker-up
+	./securechat.exe
+
+build:
+	go build -o securechat.exe main.go
+
 docker-up:
 	@cd docker && docker-compose up -d
 
@@ -12,4 +18,4 @@ goose-down:
 	@cd sql/schema && \
 	goose postgres postgres://postgres:postgres@localhost:5432/securechat?sslmode=disable down
 
-.PHONY: docker-up docker-down goose-up goose-down
+.PHONY: docker-up docker-down goose-up goose-down build run

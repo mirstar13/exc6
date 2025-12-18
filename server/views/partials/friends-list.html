@@ -1,0 +1,47 @@
+{{if .Friends}}
+    <div class="grid md:grid-cols-2 gap-3">
+        {{range .Friends}}
+            <div class="bg-signal-surface rounded-xl p-4 flex items-center justify-between group hover:bg-signal-hover transition-colors">
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    {{if .CustomIcon}}
+                        <div class="w-12 h-12 rounded-full overflow-hidden ring-2 ring-white/5 shrink-0">
+                            <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                        </div>
+                    {{else}}
+                        {{$iconClass := "bg-gradient-to-br from-blue-500 to-blue-700"}}
+                        {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                        {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                        {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                        {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                        
+                        <div class="w-12 h-12 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0">
+                            {{slice .Username 0 1}}
+                        </div>
+                    {{end}}
+                    
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
+                        <p class="text-xs text-signal-text-sub">Friend</p>
+                    </div>
+                </div>
+                
+                <button 
+                    hx-delete="/friends/remove/{{.Username}}"
+                    hx-target="#friends-list"
+                    hx-swap="innerHTML"
+                    hx-confirm="Remove {{.Username}} from your friends?"
+                    class="opacity-0 group-hover:opacity-100 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-all shrink-0">
+                    Remove
+                </button>
+            </div>
+        {{end}}
+    </div>
+{{else}}
+    <div class="text-center py-12">
+        <svg class="w-16 h-16 mx-auto text-signal-text-sub opacity-50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+        </svg>
+        <p class="text-signal-text-sub mb-3">No friends yet</p>
+        <p class="text-signal-text-sub text-sm">Search for users to add them as friends</p>
+    </div>
+{{end}}

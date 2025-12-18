@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friends - SecureChat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
+                    colors: {
+                        signal: {
+                            bg: '#121212',          
+                            sidebar: '#181818',     
+                            header: '#1E1E1E',      
+                            surface: '#2C2C2C',     
+                            hover: '#333333',       
+                            blue: '#2C6BED',        
+                            bluehover: '#3876F3',
+                            text: {
+                                main: '#F2F2F2',
+                                sub: '#848586',
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="h-screen bg-signal-bg font-sans antialiased">
+
+    <!-- Navigation -->
+    <nav class="h-14 px-4 bg-signal-header border-b border-white/5 flex justify-between items-center sticky top-0 z-50 backdrop-blur-sm">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-signal-blue rounded-full flex items-center justify-center shadow-lg shadow-blue-900/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                </svg>
+            </div>
+            <span class="font-semibold text-lg text-signal-text-main">Friends</span>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <a href="/dashboard" class="text-signal-text-sub hover:text-signal-text-main hover:bg-signal-surface px-4 py-1.5 rounded-full transition-colors flex items-center gap-2 font-medium text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back to chats
+            </a>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto mt-8 px-4 pb-8">
+        <div class="grid md:grid-cols-2 gap-6">
+            
+            <!-- Friend Requests Section -->
+            <section class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+                <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+                    <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
+                        <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                        Friend Requests
+                        {{if .Requests}}
+                            <span class="bg-signal-blue text-white text-xs px-2 py-0.5 rounded-full">{{len .Requests}}</span>
+                        {{end}}
+                    </h2>
+                </header>
+                
+                <div id="requests-list" class="p-4">
+                    {{template "partials/friend-requests" .}}
+                </div>
+            </section>
+
+            <!-- Add Friends Section -->
+            <section class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+                <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+                    <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
+                        <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                        </svg>
+                        Add Friends
+                    </h2>
+                </header>
+                
+                <div class="p-6">
+                    <div class="mb-4">
+                        <input 
+                            type="text"
+                            name="q"
+                            placeholder="Search by username..."
+                            autocomplete="off"
+                            hx-get="/friends/search"
+                            hx-trigger="keyup changed delay:300ms"
+                            hx-target="#search-results"
+                            hx-include="[name='q']"
+                            class="w-full bg-signal-surface border border-white/10 rounded-xl px-4 py-3 text-signal-text-main placeholder-signal-text-sub focus:outline-none focus:border-signal-blue focus:ring-2 focus:ring-signal-blue/20 transition-all">
+                    </div>
+                
+                    <div id="search-results">
+                        <p class="text-signal-text-sub text-sm text-center py-8">
+                            Start typing to search for users...
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Current Friends Section -->
+        <section class="mt-6 bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+            <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+                <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
+                    <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    Your Friends
+                    {{if .Friends}}
+                        <span class="text-signal-text-sub font-normal text-sm">({{len .Friends}})</span>
+                    {{end}}
+                </h2>
+            </header>
+            
+            <div id="friends-list" class="p-4">
+                {{template "partials/friends-list" .}}
+            </div>
+        </section>
+    </main>
+
+    <style>
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+    </style>
+
+</body>
+</html>

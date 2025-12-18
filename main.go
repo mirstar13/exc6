@@ -8,6 +8,7 @@ import (
 	infraredis "exc6/infrastructure/redis"
 	"exc6/server"
 	"exc6/services/chat"
+	"exc6/services/friends"
 	"exc6/services/sessions"
 	"fmt"
 	"log"
@@ -70,8 +71,11 @@ func run() error {
 	smngr := sessions.NewSessionManager(rdb)
 	log.Println("✓ Initialized session manager")
 
+	fsrv := friends.NewFriendService(dbqueries)
+	log.Println("✓ Initialized friend service")
+
 	// Create server
-	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr)
+	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr, fsrv)
 	if err != nil {
 		return fmt.Errorf("failed to create server; err: %w", err)
 	}

@@ -1,0 +1,37 @@
+{{if .Results}}
+    <div class="space-y-2 max-h-96 overflow-y-auto">
+        {{range .Results}}
+            <div class="bg-signal-surface rounded-xl p-4 flex items-center justify-between group hover:bg-signal-hover transition-colors">
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    {{if .CustomIcon}}
+                        <div class="w-10 h-10 rounded-full overflow-hidden ring-2 ring-white/5 shrink-0">
+                            <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                        </div>
+                    {{else}}
+                        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shrink-0">
+                            {{slice .Username 0 1}}
+                        </div>
+                    {{end}}
+                    
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
+                    </div>
+                </div>
+                
+                <button 
+                    hx-post="/friends/request/{{.Username}}"
+                    hx-swap="outerHTML"
+                    class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-lg transition-all text-sm font-medium shrink-0">
+                    <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Add
+                </button>
+            </div>
+        {{end}}
+    </div>
+{{else}}
+    <p class="text-signal-text-sub text-sm text-center py-8">
+        No users found
+    </p>
+{{end}}

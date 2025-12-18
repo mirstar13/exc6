@@ -1,0 +1,50 @@
+<!-- partials/friend-requests.html -->
+{{if .Requests}}
+    <div class="space-y-2">
+        {{range .Requests}}
+            <div class="bg-signal-surface rounded-xl p-4 flex items-center justify-between group hover:bg-signal-hover transition-colors">
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    {{if .CustomIcon}}
+                        <div class="w-12 h-12 rounded-full overflow-hidden ring-2 ring-white/5 shrink-0">
+                            <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
+                        </div>
+                    {{else}}
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0">
+                            {{slice .Username 0 1}}
+                        </div>
+                    {{end}}
+                    
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
+                        <p class="text-xs text-signal-text-sub">Wants to connect</p>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2 shrink-0">
+                    <button 
+                        hx-post="/friends/accept/{{.Username}}"
+                        hx-target="#requests-list"
+                        hx-swap="innerHTML"
+                        class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-lg transition-all text-sm font-medium">
+                        Accept
+                    </button>
+                    <button 
+                        hx-delete="/friends/reject/{{.Username}}"
+                        hx-target="#requests-list"
+                        hx-swap="innerHTML"
+                        hx-confirm="Reject friend request from {{.Username}}?"
+                        class="px-4 py-2 bg-signal-surface hover:bg-red-500/20 text-signal-text-sub hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-lg transition-all text-sm font-medium">
+                        Reject
+                    </button>
+                </div>
+            </div>
+        {{end}}
+    </div>
+{{else}}
+    <div class="text-center py-12">
+        <svg class="w-16 h-16 mx-auto text-signal-text-sub opacity-50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+        </svg>
+        <p class="text-signal-text-sub">No pending requests</p>
+    </div>
+{{end}}
