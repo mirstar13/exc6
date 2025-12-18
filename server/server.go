@@ -53,8 +53,8 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 	// Create Fiber app with custom error handler
 	app := fiber.New(fiber.Config{
-		AppName:      "SaraChat",
-		ServerHeader: "SaraChatServer",
+		AppName:      "SArAChat",
+		ServerHeader: "SArAChatServer",
 		Views:        engine,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,

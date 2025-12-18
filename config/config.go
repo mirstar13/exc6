@@ -71,7 +71,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
 			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
-			Port:         getEnvAsInt("SERVER_PORT", 8080),
+			Port:         getEnvAsInt("SERVER_PORT", 8000),
 			ViewsDir:     getEnv("VIEWS_DIR", "./server/views"),
 			UploadsDir:   getEnv("UPLOADS_DIR", "./server/uploads"),
 			LogFile:      getEnv("LOG_FILE", "log/server.log"),
@@ -114,8 +114,8 @@ func Load() (*Config, error) {
 			KeepAliveInterval: getEnvAsDuration("SSE_KEEPALIVE_INTERVAL", 15*time.Second),
 		},
 		RateLimit: RateLimitConfig{
-			Capacity:     getEnvAsInt64("RATE_LIMIT_CAPACITY", 100),
-			RefillRate:   getEnvAsInt64("RATE_LIMIT_REFILL", 20),
+			Capacity:     getEnvAsInt64("RATE_LIMIT_CAPACITY", 10),
+			RefillRate:   getEnvAsInt64("RATE_LIMIT_REFILL", 1),
 			RefillPeriod: getEnvAsDuration("RATE_LIMIT_PERIOD", time.Second),
 		},
 		Database: DatabaseConfig{
