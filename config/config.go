@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -22,6 +23,8 @@ type ServerConfig struct {
 	Host         string
 	Port         int
 	ViewsDir     string
+	StaticDir    string
+	ScriptsDir   string
 	UploadsDir   string
 	LogFile      string
 	ReadTimeout  time.Duration
@@ -67,14 +70,91 @@ type DatabaseConfig struct {
 	ConnectionString string
 }
 
+// getProjectRoot finds the project root by looking for go.mod
+func getProjectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// Check if PROJECT_ROOT env var is set (useful for tests)
+	if projectRoot := os.Getenv("PROJECT_ROOT"); projectRoot != "" {
+		return projectRoot, nil
+	}
+
+	// Walk up the directory tree looking for go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root without finding go.mod
+			return "", fmt.Errorf("could not find project root (no go.mod found)")
+		}
+		dir = parent
+	}
+}
+
+// resolvePath resolves a path relative to the project root if it's not absolute
+func resolvePath(path string) (string, error) {
+	// If it's already an absolute path, return it
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+
+	// Get project root
+	projectRoot, err := getProjectRoot()
+	if err != nil {
+		return "", err
+	}
+
+	// Join with project root
+	return filepath.Join(projectRoot, path), nil
+}
+
 func Load() (*Config, error) {
+	// Resolve paths relative to project root
+	viewsDir, err := resolvePath(getEnv("VIEWS_DIR", "./server/views"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve views directory: %w", err)
+	}
+
+	uploadsDir, err := resolvePath(getEnv("UPLOADS_DIR", "./server/uploads"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve uploads directory: %w", err)
+	}
+
+	logFile, err := resolvePath(getEnv("LOG_FILE", "./log/server.log"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve log file: %w", err)
+	}
+
+	staticDir, err := resolvePath(getEnv("STATIC_DIR", "./static"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve static directory: %w", err)
+	}
+
+	scriptsDir, err := resolvePath(getEnv("SCRIPTS_DIR", "./scripts"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve scripts directory: %w", err)
+	}
+
+	iconsDir, err := resolvePath(getEnv("ICONS_DIR", "./server/uploads/icons"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve icons directory: %w", err)
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
 			Port:         getEnvAsInt("SERVER_PORT", 8000),
-			ViewsDir:     getEnv("VIEWS_DIR", "./server/views"),
-			UploadsDir:   getEnv("UPLOADS_DIR", "./server/uploads"),
-			LogFile:      getEnv("LOG_FILE", "log/server.log"),
+			ViewsDir:     viewsDir,
+			UploadsDir:   uploadsDir,
+			StaticDir:    staticDir,
+			ScriptsDir:   scriptsDir,
+			LogFile:      logFile,
 			ReadTimeout:  getEnvAsDuration("READ_TIMEOUT", 5*time.Minute),
 			WriteTimeout: 0, // No write timeout by default (needed for SSE)
 		},
@@ -103,7 +183,7 @@ func Load() (*Config, error) {
 				".gif",
 				".webp",
 			},
-			IconsDir: getEnv("ICONS_DIR", "./server/uploads/icons"),
+			IconsDir: iconsDir,
 		},
 		Session: SessionConfig{
 			TTL:             getEnvAsDuration("SESSION_TTL", 24*time.Hour),

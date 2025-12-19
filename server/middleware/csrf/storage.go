@@ -1,9 +1,12 @@
 package csrf
 
 import (
+	"context"
 	"exc6/apperrors"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Storage interface for CSRF token storage
@@ -85,4 +88,47 @@ func (s *InMemoryStorage) cleanup() {
 		}
 		s.mu.Unlock()
 	}
+}
+
+type RedisStorage struct {
+	client *redis.Client
+	prefix string
+	ttl    time.Duration
+}
+
+func NewRedisStorage(client *redis.Client, ttl time.Duration) *RedisStorage {
+	return &RedisStorage{
+		client: client,
+		prefix: "csrf:",
+		ttl:    ttl,
+	}
+}
+
+func (s *RedisStorage) Get(key string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	val, err := s.client.Get(ctx, s.prefix+key).Result()
+	if err == redis.Nil {
+		return "", apperrors.New(apperrors.ErrCodeNotFound, "CSRF token not found", 404)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return val, nil
+}
+
+func (s *RedisStorage) Set(key string, value string, expiration time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	return s.client.Set(ctx, s.prefix+key, value, expiration).Err()
+}
+
+func (s *RedisStorage) Delete(key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	return s.client.Del(ctx, s.prefix+key).Err()
 }

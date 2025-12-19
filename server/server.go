@@ -21,7 +21,7 @@ import (
 )
 
 type Server struct {
-	app   *fiber.App
+	App   *fiber.App
 	db    *db.Queries
 	rdb   *redis.Client
 	csrv  *chat.ChatService
@@ -64,25 +64,29 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	})
 
 	/*
-		app.Use(func(c *fiber.Ctx) error {
-			c.Set("Content-Security-Policy",
-				"default-src 'self'; "+
-					"script-src 'self' https://unpkg.com https://cdn.tailwindcss.com; "+
-					"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;")
-			return c.Next()
-		})
-	*/
-	//app.Use(csrf.New())
+		app.Use(security.New(security.Config{
+			Development: os.Getenv("APP_ENV") == "development",
+		}))
+			csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
+			app.Use(csrf.New(csrf.Config{
+				Storage:      csrfStorage,
+				KeyLookup:    "header:X-CSRF-Token",
+				CookieName:   "csrf_token",
+				Expiration:   1 * time.Hour,
+				ErrorHandler: csrf.ConfigDefault.ErrorHandler,
+			}))
 
+			app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
+	*/
 	// Setup favicon middleware - serves all favicon formats
 	app.Use(favicon.New(favicon.Config{
-		File: "./static/favicon.ico",
+		File: cfg.Server.StaticDir + "/favicon.ico",
 		URL:  "/favicon.ico",
 	}))
 
 	// Serve static files from /static directory
 	// This will serve all other favicon formats (PNG, SVG, etc.)
-	app.Static("/static", "./static", fiber.Static{
+	app.Static("/static", cfg.Server.StaticDir, fiber.Static{
 		Compress:      true,
 		ByteRange:     false,
 		Browse:        false,
@@ -91,7 +95,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		MaxAge:        86400,
 	})
 
-	app.Static("/scripts", "./scripts", fiber.Static{
+	app.Static("/scripts", cfg.Server.ScriptsDir, fiber.Static{
 		Compress:  false,
 		ByteRange: false,
 		Browse:    false,
@@ -118,7 +122,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	}))
 
 	srv := &Server{
-		app:   app,
+		App:   app,
 		rdb:   rdb,
 		db:    db,
 		csrv:  csrv,
@@ -136,10 +140,10 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 func (s *Server) Start() error {
 	addr := s.cfg.ServerAddress()
 	log.Printf("Starting server on %s", addr)
-	return s.app.Listen(addr)
+	return s.App.Listen(addr)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down server...")
-	return s.app.ShutdownWithContext(ctx)
+	return s.App.ShutdownWithContext(ctx)
 }

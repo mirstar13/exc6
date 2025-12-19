@@ -13,15 +13,15 @@ import (
 func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, smngr *sessions.SessionManager) {
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
-	authRoutes := NewAuthRoutes(db, csrv, fsrv, smngr)
 	apiRoutes := NewAPIRoutes()
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, smngr)
 
 	// Register public routes (no auth required)
 	publicRoutes.Register(app)
 
-	// Register authenticated routes (auth middleware applied)
-	authRoutes.Register(app)
-
 	// Register API routes (versioned, authenticated)
 	apiRoutes.Register(app)
+
+	// Register authenticated routes (auth middleware applied)
+	authRoutes.Register(app)
 }

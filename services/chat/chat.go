@@ -22,7 +22,7 @@ const (
 	BatchFlushSize          = 100
 	BatchFlushInterval      = 100 * time.Millisecond
 
-	// New: Persistent queue configuration
+	// Persistent queue configuration
 	PersistentQueueKey = "chat:pending_messages"
 	MaxRetries         = 3
 	RetryBackoff       = 5 * time.Second
@@ -37,8 +37,10 @@ type ChatService struct {
 	shutdownOnce  sync.Once
 	shutdownChan  chan struct{}
 	wg            sync.WaitGroup
+	ctx           context.Context    // Background context for workers
+	cancel        context.CancelFunc // Cancel function for graceful shutdown
 
-	// New: Metrics for monitoring
+	// Metrics for monitoring
 	metrics struct {
 		mu              sync.RWMutex
 		messagesQueued  int64
@@ -60,6 +62,10 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		return nil, err
 	}
 
+	// Create a background context that's independent of the input context
+	// This ensures workers keep running even if the input context is cancelled
+	bgCtx, cancel := context.WithCancel(context.Background())
+
 	cs := &ChatService{
 		rdb:           rdb,
 		qdb:           qdb,
@@ -67,12 +73,14 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		kafkaTopic:    "chat-history",
 		messageBuffer: make(chan *ChatMessage, MessageBufferSize),
 		shutdownChan:  make(chan struct{}),
+		ctx:           bgCtx,
+		cancel:        cancel,
 	}
 
 	// Start background workers
 	cs.wg.Add(2)
 	go cs.messageWriter()
-	go cs.persistentQueueWorker(ctx)
+	go cs.persistentQueueWorker()
 
 	return cs, nil
 }
@@ -141,7 +149,7 @@ func (cs *ChatService) persistMessageToQueue(ctx context.Context, msg *ChatMessa
 }
 
 // persistentQueueWorker processes messages from Redis queue
-func (cs *ChatService) persistentQueueWorker(ctx context.Context) {
+func (cs *ChatService) persistentQueueWorker() {
 	defer cs.wg.Done()
 
 	ticker := time.NewTicker(1 * time.Second)
@@ -150,16 +158,20 @@ func (cs *ChatService) persistentQueueWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			cs.processQueuedMessages(ctx)
+			cs.processQueuedMessages()
 		case <-cs.shutdownChan:
 			// Final drain on shutdown
-			cs.processQueuedMessages(ctx)
+			cs.processQueuedMessages()
 			return
 		}
 	}
 }
 
-func (cs *ChatService) processQueuedMessages(ctx context.Context) {
+func (cs *ChatService) processQueuedMessages() {
+	// Use background context with timeout for Redis operations
+	ctx, cancel := context.WithTimeout(cs.ctx, 5*time.Second)
+	defer cancel()
+
 	// Check queue length
 	queueLen, err := cs.rdb.LLen(ctx, PersistentQueueKey).Result()
 	if err != nil || queueLen == 0 {
@@ -306,7 +318,7 @@ func (cs *ChatService) flushBatch(batch []*ChatMessage) {
 			}).Error("Failed to send message in batch")
 
 			// Persist failed message to Redis queue for retry
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(cs.ctx, 2*time.Second)
 			msgJSON, _ := json.Marshal(msg)
 			cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON)
 			cancel()
@@ -354,7 +366,6 @@ func (cs *ChatService) GetMetrics() map[string]int64 {
 	}
 }
 
-// Rest of the methods remain the same...
 func (cs *ChatService) SubscribeToMessages(ctx context.Context) *redis.PubSub {
 	return cs.rdb.Subscribe(ctx, "chat:messages")
 }
@@ -365,7 +376,7 @@ func getChatKey(user1, user2 string) string {
 	return fmt.Sprintf("chat:%s:%s", users[0], users[1])
 }
 
-func (cs *ChatService) getConversationKey(user1, user2 string) string {
+func (cs *ChatService) GetConversationKey(user1, user2 string) string {
 	users := []string{user1, user2}
 	sort.Strings(users)
 	return fmt.Sprintf("chat:conv:%s:%s", users[0], users[1])
@@ -377,7 +388,7 @@ func (cs *ChatService) cacheMessage(ctx context.Context, msg *ChatMessage) error
 		return err
 	}
 
-	conversationKey := cs.getConversationKey(msg.FromID, msg.ToID)
+	conversationKey := cs.GetConversationKey(msg.FromID, msg.ToID)
 
 	pipe := cs.rdb.Pipeline()
 	pipe.ZAdd(ctx, conversationKey, redis.Z{
@@ -392,7 +403,7 @@ func (cs *ChatService) cacheMessage(ctx context.Context, msg *ChatMessage) error
 }
 
 func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*ChatMessage, error) {
-	conversationKey := cs.getConversationKey(user1, user2)
+	conversationKey := cs.GetConversationKey(user1, user2)
 
 	results, err := cs.rdb.ZRange(ctx, conversationKey, 0, -1).Result()
 	if err != nil {
@@ -414,7 +425,7 @@ func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*
 func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 	var contacts []string
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(cs.ctx, 5*time.Second)
 	defer cancel()
 
 	usernames, err := cs.qdb.GetAllUsernames(ctx)
@@ -434,6 +445,9 @@ func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 // Close performs graceful shutdown
 func (cs *ChatService) Close() error {
 	cs.shutdownOnce.Do(func() {
+		// Cancel background context
+		cs.cancel()
+
 		// Signal shutdown to all workers
 		close(cs.shutdownChan)
 

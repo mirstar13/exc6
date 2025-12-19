@@ -26,6 +26,10 @@
         hx-indicator="#login-btn"
         class="flex flex-col gap-5">
         
+        {{if .CSRFToken}}
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{end}}
+        
         <div class="space-y-1">
             <label class="block text-signal-text-sub text-xs font-bold uppercase tracking-wider pl-1">Username</label>
             <input 

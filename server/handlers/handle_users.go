@@ -106,7 +106,7 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 				})
 			}
 			// Other DB error
-			logger.WithFields(map[string]interface{}{
+			logger.WithFields(map[string]any{
 				"username": username,
 				"error":    err.Error(),
 			}).Error("Database error fetching user")
@@ -138,7 +138,7 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		defer sessCancel()
 
 		if err := smngr.SaveSession(sessCtx, newSession); err != nil {
-			logger.WithFields(map[string]interface{}{
+			logger.WithFields(map[string]any{
 				"username":   username,
 				"session_id": sessionID,
 				"error":      err.Error(),
@@ -172,7 +172,7 @@ func HandleUserLogout(smngr *sessions.SessionManager) fiber.Handler {
 			defer cancel()
 
 			if err := smngr.DeleteSession(sessCtx, sessionID); err != nil {
-				logger.WithFields(map[string]interface{}{
+				logger.WithFields(map[string]any{
 					"session_id": sessionID,
 					"error":      err.Error(),
 				}).Warn("Failed to delete session during logout")
