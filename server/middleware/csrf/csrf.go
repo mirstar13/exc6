@@ -45,17 +45,22 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get session ID for token association
-		sessionID := c.Cookies("session_id")
-		if sessionID == "" {
-			// No session, skip CSRF check (handled by auth middleware)
+		method := c.Method()
+		if method != "POST" && method != "PUT" && method != "DELETE" && method != "PATCH" {
+			// Safe methods (GET, HEAD, OPTIONS) don't need CSRF protection
 			return c.Next()
 		}
 
-		// Only check CSRF for state-changing methods
-		method := c.Method()
-		if method != "POST" && method != "PUT" && method != "DELETE" && method != "PATCH" {
-			// Safe methods don't need CSRF protection
+		// Skip CSRF for public auth endpoints
+		path := c.Path()
+		if path == "/login" || path == "/register" || path == "/login-form" || path == "/register-form" {
+			return c.Next()
+		}
+
+		// Get session ID for token association
+		sessionID := c.Cookies("session_id")
+		if sessionID == "" {
+			// No session yet - skip CSRF check
 			return c.Next()
 		}
 

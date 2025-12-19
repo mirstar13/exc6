@@ -37,12 +37,32 @@ var DefaultConfig = Config{
 	Development: false,
 }
 
+// configDefault merges provided config with defaults
+func configDefault(config ...Config) Config {
+	// Return default if nothing provided
+	if len(config) < 1 {
+		return DefaultConfig
+	}
+
+	cfg := config[0]
+
+	// Merge with defaults if fields are empty
+	if len(cfg.AllowedScriptSources) == 0 {
+		cfg.AllowedScriptSources = DefaultConfig.AllowedScriptSources
+	}
+	if len(cfg.AllowedStyleSources) == 0 {
+		cfg.AllowedStyleSources = DefaultConfig.AllowedStyleSources
+	}
+	if len(cfg.AllowedFontSources) == 0 {
+		cfg.AllowedFontSources = DefaultConfig.AllowedFontSources
+	}
+
+	return cfg
+}
+
 // New creates a comprehensive security headers middleware
 func New(config ...Config) fiber.Handler {
-	cfg := DefaultConfig
-	if len(config) > 0 {
-		cfg = config[0]
-	}
+	cfg := configDefault(config...)
 
 	return func(c *fiber.Ctx) error {
 		// Build CSP policy
@@ -56,7 +76,7 @@ func New(config ...Config) fiber.Handler {
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
-		// uncomment when using HTTPS
+		// Uncomment when using HTTPS
 		// c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 
 		return c.Next()

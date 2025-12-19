@@ -1,4 +1,4 @@
-run: build docker-up
+run: docker-up build
 	@./securechat.exe
 
 build:

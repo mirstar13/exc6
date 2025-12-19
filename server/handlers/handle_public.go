@@ -17,10 +17,20 @@ func HandleHomepage() fiber.Handler {
 // Supports both full page and HTMX partial rendering
 func HandleLoginForm() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if isHTMXRequest(c) {
-			return c.Render("partials/login", fiber.Map{})
+		// Get CSRF token from context if it exists
+		csrfToken := ""
+		if token := c.Locals("csrf_token"); token != nil {
+			csrfToken = token.(string)
 		}
-		return c.Render("login", fiber.Map{})
+
+		templateData := fiber.Map{
+			"CSRFToken": csrfToken,
+		}
+
+		if isHTMXRequest(c) {
+			return c.Render("partials/login", templateData)
+		}
+		return c.Render("login", templateData)
 	}
 }
 
@@ -28,10 +38,20 @@ func HandleLoginForm() fiber.Handler {
 // Supports both full page and HTMX partial rendering
 func HandleRegisterForm() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if isHTMXRequest(c) {
-			return c.Render("partials/register", fiber.Map{})
+		// Get CSRF token from context if it exists
+		csrfToken := ""
+		if token := c.Locals("csrf_token"); token != nil {
+			csrfToken = token.(string)
 		}
-		return c.Render("register", fiber.Map{})
+
+		templateData := fiber.Map{
+			"CSRFToken": csrfToken,
+		}
+
+		if isHTMXRequest(c) {
+			return c.Render("partials/register", templateData)
+		}
+		return c.Render("register", templateData)
 	}
 }
 

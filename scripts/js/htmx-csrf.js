@@ -5,8 +5,7 @@
  * that use state-changing methods (POST, PUT, DELETE, PATCH)
  * 
  * Add this to your base template's <head> section:
- * <script src="/static/js/htmx-csrf.js"></script>
-
+ */
 
 (function() {
     'use strict';
@@ -102,4 +101,3 @@
 
     console.log('HTMX CSRF protection initialized');
 })();
- */

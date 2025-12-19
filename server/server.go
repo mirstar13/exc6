@@ -5,7 +5,9 @@ import (
 	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
+	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
+	"exc6/server/middleware/security"
 	"exc6/server/routes"
 	"exc6/services/chat"
 	"exc6/services/friends"
@@ -13,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/favicon"
@@ -63,21 +66,33 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
 
-	/*
-		app.Use(security.New(security.Config{
-			Development: os.Getenv("APP_ENV") == "development",
-		}))
-			csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
-			app.Use(csrf.New(csrf.Config{
-				Storage:      csrfStorage,
-				KeyLookup:    "header:X-CSRF-Token",
-				CookieName:   "csrf_token",
-				Expiration:   1 * time.Hour,
-				ErrorHandler: csrf.ConfigDefault.ErrorHandler,
-			}))
+	app.Use(security.New(security.Config{
+		Development: os.Getenv("APP_ENV") == "development",
+		AllowedScriptSources: []string{
+			"'self'",
+			"https://unpkg.com",
+			"https://cdn.tailwindcss.com",
+		},
+	}))
 
-			app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
-	*/
+	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
+
+	app.Use(csrf.New(csrf.Config{
+		Storage:    csrfStorage,
+		KeyLookup:  "header:X-CSRF-Token",
+		CookieName: "csrf_token",
+		Expiration: 1 * time.Hour,
+		// Skip CSRF for public authentication routes
+		Next: func(c *fiber.Ctx) bool {
+			path := c.Path()
+			return path == "/login" ||
+				path == "/register" ||
+				path == "/login-form" ||
+				path == "/register-form" ||
+				path == "/api/v1/status"
+		},
+	}))
+
 	// Setup favicon middleware - serves all favicon formats
 	app.Use(favicon.New(favicon.Config{
 		File: cfg.Server.StaticDir + "/favicon.ico",
