@@ -48,12 +48,19 @@ func HandleLoadChatWindow(cs *chat.ChatService, qdb *db.Queries) fiber.Handler {
 			}
 		}
 
+		// Get CSRF token from context
+		csrfToken := ""
+		if token := c.Locals("csrf_token"); token != nil {
+			csrfToken = token.(string)
+		}
+
 		return c.Render("partials/chat-window", fiber.Map{
 			"Me":                currentUser,
 			"Other":             targetUser,
 			"Messages":          history,
 			"ContactIcon":       contactIcon,
 			"ContactCustomIcon": contactCustomIcon,
+			"CSRFToken":         csrfToken,
 		})
 	}
 }

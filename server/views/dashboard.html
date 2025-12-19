@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{if .CSRFToken}}
+    <meta name="csrf-token" content="{{.CSRFToken}}">
+    {{end}}
     <title>sarAChat</title>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>

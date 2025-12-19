@@ -5,6 +5,7 @@ import (
 	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
+	"exc6/server/handlers"
 	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
 	"exc6/server/middleware/security"
@@ -52,7 +53,6 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		ShowInternalErrors: os.Getenv("APP_ENV") == "development",
 		OnError: func(c *fiber.Ctx, err *apperrors.AppError) {
 			// TODO: Add metrics/monitoring here
-			// Example: metrics.RecordError(err.Code, err.StatusCode)
 		},
 	}
 
@@ -77,12 +77,12 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
 
+	// CSRF Protection Middleware
 	app.Use(csrf.New(csrf.Config{
 		Storage:    csrfStorage,
 		KeyLookup:  "header:X-CSRF-Token",
 		CookieName: "csrf_token",
 		Expiration: 1 * time.Hour,
-		// Skip CSRF for public authentication routes
 		Next: func(c *fiber.Ctx) bool {
 			path := c.Path()
 			return path == "/login" ||
@@ -93,20 +93,22 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		},
 	}))
 
-	// Setup favicon middleware - serves all favicon formats
+	// CSRF Token Injection Middleware (for templates)
+	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
+
+	// Setup favicon middleware
 	app.Use(favicon.New(favicon.Config{
 		File: cfg.Server.StaticDir + "/favicon.ico",
 		URL:  "/favicon.ico",
 	}))
 
-	// Serve static files from /static directory
-	// This will serve all other favicon formats (PNG, SVG, etc.)
+	// Serve static files
 	app.Static("/static", cfg.Server.StaticDir, fiber.Static{
 		Compress:      true,
 		ByteRange:     false,
 		Browse:        false,
 		Index:         "",
-		CacheDuration: 86400, // 24 hours
+		CacheDuration: 86400,
 		MaxAge:        86400,
 	})
 
@@ -118,7 +120,6 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		MaxAge:    86400,
 	})
 
-	// Serve static uploads
 	app.Static("/uploads", cfg.Server.UploadsDir)
 
 	// Setup logging

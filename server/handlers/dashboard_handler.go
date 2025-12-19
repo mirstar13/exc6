@@ -9,8 +9,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// HandleDashboard renders the main dashboard with ONLY accepted friends
-// Also includes friend request count for notification badge
 func HandleDashboard(fsrv *friends.FriendService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
@@ -48,6 +46,12 @@ func HandleDashboard(fsrv *friends.FriendService, qdb *db.Queries) fiber.Handler
 			customIconValue = user.CustomIcon.String
 		}
 
+		// Get CSRF token from context
+		csrfToken := ""
+		if token := c.Locals("csrf_token"); token != nil {
+			csrfToken = token.(string)
+		}
+
 		// Convert FriendInfo to ContactData for template
 		type ContactData struct {
 			Username   string
@@ -70,6 +74,7 @@ func HandleDashboard(fsrv *friends.FriendService, qdb *db.Queries) fiber.Handler
 			"CustomIcon":          customIconValue,
 			"Contacts":            contacts,
 			"PendingRequestCount": requestCount,
+			"CSRFToken":           csrfToken,
 		})
 	}
 }
