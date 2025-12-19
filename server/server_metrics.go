@@ -14,6 +14,7 @@ import (
 	"exc6/server/routes"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 	"fmt"
 	"os"
@@ -37,6 +38,7 @@ func NewServerWithMetrics(
 	csrv *chat.ChatService,
 	smngr *sessions.SessionManager,
 	fsrv *friends.FriendService,
+	gsrv *groups.GroupService,
 ) (*Server, error) {
 	// Initialize template engine
 	engine := html.New(cfg.Server.ViewsDir, ".html")
@@ -173,7 +175,7 @@ func NewServerWithMetrics(
 	}
 
 	// Register all routes
-	routes.RegisterRoutes(app, dbQueries, csrv, fsrv, smngr)
+	routes.RegisterRoutes(app, dbQueries, csrv, fsrv, gsrv, smngr)
 
 	return srv, nil
 }

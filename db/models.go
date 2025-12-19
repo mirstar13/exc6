@@ -19,6 +19,25 @@ type Friend struct {
 	Accepted  bool
 }
 
+type Group struct {
+	ID          uuid.UUID
+	Name        string
+	Description sql.NullString
+	Icon        sql.NullString
+	CustomIcon  sql.NullString
+	CreatedBy   uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type GroupMember struct {
+	ID       uuid.UUID
+	GroupID  uuid.UUID
+	UserID   uuid.UUID
+	Role     string
+	JoinedAt time.Time
+}
+
 type User struct {
 	ID           uuid.UUID
 	CreatedAt    time.Time

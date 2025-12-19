@@ -61,7 +61,8 @@ func (q *Queries) AddFriend(ctx context.Context, arg AddFriendParams) (Friend, e
 }
 
 const getFriendRequests = `-- name: GetFriendRequests :many
-SELECT id, user_id, friend_id, created_at, accepted FROM friends WHERE friend_id = $1 AND accepted = false
+SELECT id, user_id, friend_id, created_at, accepted FROM friends 
+WHERE friend_id = $1 AND accepted = false
 `
 
 func (q *Queries) GetFriendRequests(ctx context.Context, friendID uuid.NullUUID) ([]Friend, error) {
@@ -94,7 +95,8 @@ func (q *Queries) GetFriendRequests(ctx context.Context, friendID uuid.NullUUID)
 }
 
 const getFriends = `-- name: GetFriends :many
-SELECT id, user_id, friend_id, created_at, accepted FROM friends WHERE user_id = $1 AND accepted = true
+SELECT id, user_id, friend_id, created_at, accepted FROM friends 
+WHERE user_id = $1 AND accepted = true
 OR friend_id = $1 AND accepted = true
 `
 
@@ -128,7 +130,8 @@ func (q *Queries) GetFriends(ctx context.Context, userID uuid.NullUUID) ([]Frien
 }
 
 const removeFreind = `-- name: RemoveFreind :one
-DELETE FROM friends WHERE user_id = $1 AND friend_id = $2
+DELETE FROM friends 
+WHERE user_id = $1 AND friend_id = $2
 RETURNING id, user_id, friend_id, created_at, accepted
 `
 

@@ -38,6 +38,7 @@ func (s *MetricsTestSuite) SetupSuite() {
 		s.ChatSvc,
 		s.SessionMgr,
 		s.FriendSvc,
+		s.GroupSvc,
 	)
 	s.Require().NoError(err)
 	s.app = srv.App

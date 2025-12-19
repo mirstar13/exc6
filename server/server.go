@@ -12,6 +12,7 @@ import (
 	"exc6/server/routes"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 	"fmt"
 	"log"
@@ -31,10 +32,11 @@ type Server struct {
 	csrv  *chat.ChatService
 	smngr *sessions.SessionManager
 	fsrv  *friends.FriendService
+	gsrv  *groups.GroupService
 	cfg   *config.Config
 }
 
-func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager, fsrv *friends.FriendService) (*Server, error) {
+func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager, fsrv *friends.FriendService, gsrv *groups.GroupService) (*Server, error) {
 	// Initialize template engine
 	engine := html.New(cfg.Server.ViewsDir, ".html")
 
@@ -153,11 +155,12 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		csrv:  csrv,
 		smngr: smngr,
 		fsrv:  fsrv,
+		gsrv:  gsrv,
 		cfg:   cfg,
 	}
 
 	// Register all routes
-	routes.RegisterRoutes(app, db, csrv, fsrv, smngr)
+	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr)
 
 	return srv, nil
 }

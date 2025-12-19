@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groups - SecureChat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/scripts/js/htmx-csrf.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+                    colors: {
+                        signal: {
+                            bg: '#121212', sidebar: '#181818', header: '#1E1E1E',
+                            surface: '#2C2C2C', hover: '#333333', blue: '#2C6BED',
+                            bluehover: '#3876F3', text: { main: '#F2F2F2', sub: '#848586' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-screen bg-signal-bg font-sans antialiased">
+    <nav class="h-14 px-4 bg-signal-header border-b border-white/5 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-signal-blue rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                </svg>
+            </div>
+            <span class="font-semibold text-lg text-signal-text-main">Groups</span>
+        </div>
+        <a href="/dashboard" class="text-signal-text-sub hover:text-signal-text-main px-4 py-1.5 rounded-full transition-colors">
+            Back to chats
+        </a>
+    </nav>
+
+    <main class="max-w-6xl mx-auto mt-8 px-4 pb-8">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-signal-text-main">Your Groups</h1>
+            <button onclick="document.getElementById('create-modal').classList.remove('hidden')"
+                    class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-xl transition-all">
+                Create Group
+            </button>
+        </div>
+
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {{range .Groups}}
+            <a href="/groups/{{.ID}}/chat" class="bg-signal-sidebar rounded-xl p-6 border border-white/5 hover:bg-signal-surface transition-colors">
+                <div class="flex items-center gap-4 mb-4">
+                    {{if .CustomIcon}}
+                    <img src="{{.CustomIcon}}" class="w-12 h-12 rounded-full" alt="{{.Name}}">
+                    {{else}}
+                    <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                        {{slice .Name 0 1}}
+                    </div>
+                    {{end}}
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-signal-text-main truncate">{{.Name}}</h3>
+                        <p class="text-xs text-signal-text-sub">{{.MemberCount}} members</p>
+                    </div>
+                </div>
+                {{if .Description}}
+                <p class="text-sm text-signal-text-sub line-clamp-2">{{.Description}}</p>
+                {{end}}
+                <div class="mt-4 flex items-center gap-2">
+                    <span class="text-xs px-2 py-1 bg-signal-surface rounded-full text-signal-text-sub">{{.UserRole}}</span>
+                </div>
+            </a>
+            {{else}}
+            <div class="col-span-full text-center py-12">
+                <p class="text-signal-text-sub mb-4">No groups yet</p>
+                <button onclick="document.getElementById('create-modal').classList.remove('hidden')"
+                        class="px-6 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-xl transition-all">
+                    Create Your First Group
+                </button>
+            </div>
+            {{end}}
+        </div>
+    </main>
+
+    <!-- Create Group Modal -->
+    <div id="create-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4">
+            <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
+            <form hx-post="/groups/create" hx-target="#create-modal" hx-swap="outerHTML">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-signal-text-main mb-2">Group Name</label>
+                        <input type="text" name="name" required
+                               class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-signal-text-main mb-2">Description (optional)</label>
+                        <textarea name="description" rows="3"
+                                  class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main"></textarea>
+                    </div>
+                    <div class="flex gap-3 pt-4">
+                        <button type="submit" class="flex-1 bg-signal-blue hover:bg-signal-bluehover text-white py-2.5 rounded-xl transition-all">
+                            Create
+                        </button>
+                        <button type="button" onclick="document.getElementById('create-modal').classList.add('hidden')"
+                                class="flex-1 bg-signal-bg hover:bg-signal-hover text-signal-text-main py-2.5 rounded-xl transition-all">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

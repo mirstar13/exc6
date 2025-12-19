@@ -31,7 +31,7 @@ func (s *AuthSecurityTestSuite) SetupSuite() {
 	s.TestSuite.SetupSuite()
 
 	// Initialize the server
-	srv, err := server.NewServer(s.Config, s.Queries, s.Redis, s.ChatSvc, s.SessionMgr, s.FriendSvc)
+	srv, err := server.NewServer(s.Config, s.Queries, s.Redis, s.ChatSvc, s.SessionMgr, s.FriendSvc, s.GroupSvc)
 	s.Require().NoError(err, "Failed to create server")
 	s.Require().NotNil(srv, "Server should not be nil")
 	s.Require().NotNil(srv.App, "Server app should not be nil")

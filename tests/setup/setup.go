@@ -8,6 +8,7 @@ import (
 	infraredis "exc6/infrastructure/redis"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 	"log"
 	"os"
@@ -29,6 +30,7 @@ type TestSuite struct {
 	ChatSvc    *chat.ChatService
 	FriendSvc  *friends.FriendService
 	SessionMgr *sessions.SessionManager
+	GroupSvc   *groups.GroupService
 	Config     *config.Config
 	Ctx        context.Context
 }
@@ -141,6 +143,9 @@ func (s *TestSuite) setupServices() {
 	// Session manager
 	s.SessionMgr = sessions.NewSessionManager(s.Redis)
 	s.Require().NotNil(s.SessionMgr, "SessionManager should not be nil")
+
+	s.GroupSvc = groups.NewGroupService(s.Queries)
+	s.Require().NotNil(s.GroupSvc, "GroupService should not be nil")
 }
 
 func (s *TestSuite) cleanDatabase() {

@@ -9,6 +9,7 @@ import (
 	"exc6/server"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 	"fmt"
 	"log"
@@ -74,8 +75,11 @@ func run() error {
 	fsrv := friends.NewFriendService(dbqueries)
 	log.Println("✓ Initialized friend service")
 
+	gsrv := groups.NewGroupService(dbqueries)
+	log.Println("✓ Initialized group service")
+
 	// Create server
-	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr, fsrv)
+	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr, fsrv, gsrv)
 	if err != nil {
 		return fmt.Errorf("failed to create server; err: %w", err)
 	}

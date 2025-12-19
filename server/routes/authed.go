@@ -6,6 +6,7 @@ import (
 	"exc6/server/middleware/auth"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,15 +17,17 @@ type AuthRoutes struct {
 	db    *db.Queries
 	csrv  *chat.ChatService
 	fsrv  *friends.FriendService
+	gsrv  *groups.GroupService
 	smngr *sessions.SessionManager
 }
 
 // NewAuthRoutes creates a new authenticated routes handler
-func NewAuthRoutes(db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, smngr *sessions.SessionManager) *AuthRoutes {
+func NewAuthRoutes(db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager) *AuthRoutes {
 	return &AuthRoutes{
 		db:    db,
 		csrv:  csrv,
 		fsrv:  fsrv,
+		gsrv:  gsrv,
 		smngr: smngr,
 	}
 }
@@ -50,6 +53,8 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 
 	// Friend management routes
 	ar.registerFriendRoutes(authed)
+
+	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv)
 }
 
 // registerChatRoutes sets up chat-related endpoints

@@ -4,6 +4,7 @@ import (
 	"exc6/db"
 	"exc6/services/chat"
 	"exc6/services/friends"
+	"exc6/services/groups"
 	"exc6/services/sessions"
 
 	"github.com/gofiber/adaptor/v2"
@@ -12,13 +13,13 @@ import (
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, smngr *sessions.SessionManager) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager) {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
 	apiRoutes := NewAPIRoutes()
-	authRoutes := NewAuthRoutes(db, csrv, fsrv, smngr)
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr)
 
 	// Register public routes (no auth required)
 	publicRoutes.Register(app)

@@ -1,0 +1,31 @@
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 animate-slide-up">
+        <div class="text-center">
+            <div class="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-signal-text-main mb-2">Group Created!</h3>
+            <p class="text-signal-text-sub mb-6">Your group "{{.Group.Name}}" has been created.</p>
+            <div class="flex gap-3">
+                <a href="/groups/{{.Group.ID}}/chat" 
+                   class="flex-1 bg-signal-blue hover:bg-signal-bluehover text-white py-2.5 rounded-xl transition-all text-center">
+                    Open Group
+                </a>
+                <button onclick="window.location.reload()" 
+                        class="flex-1 bg-signal-bg hover:bg-signal-hover text-signal-text-main py-2.5 rounded-xl transition-all">
+                    Stay Here
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes slide-up {
+    0% { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up { animation: slide-up 0.3s ease-out; }
+</style>

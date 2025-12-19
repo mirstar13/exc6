@@ -28,7 +28,7 @@ func TestE2ESuite(t *testing.T) {
 func (s *E2ETestSuite) SetupSuite() {
 	s.TestSuite.SetupSuite()
 
-	srv, err := server.NewServer(s.Config, s.Queries, s.Redis, s.ChatSvc, s.SessionMgr, s.FriendSvc)
+	srv, err := server.NewServer(s.Config, s.Queries, s.Redis, s.ChatSvc, s.SessionMgr, s.FriendSvc, s.GroupSvc)
 	s.Require().NoError(err)
 	s.app = srv.App
 }
