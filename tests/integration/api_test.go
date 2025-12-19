@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"exc6/server"
 	"exc6/tests/setup"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -76,10 +74,6 @@ func (s *APITestSuite) TestLoginEndpoint() {
 
 	resp, err := s.app.Test(req)
 	s.NoError(err)
-
-	raw_resp, err := io.ReadAll(resp.Body)
-	s.NoError(err)
-	fmt.Println("Login Response Body:", string(raw_resp))
 
 	// Should set session cookie
 	cookies := resp.Cookies()

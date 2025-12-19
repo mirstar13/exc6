@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
+	"exc6/pkg/metrics"
 	"exc6/server/handlers"
 	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
@@ -14,27 +16,28 @@ import (
 	"exc6/services/friends"
 	"exc6/services/sessions"
 	"fmt"
-	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/favicon"
 	"github.com/gofiber/template/html/v2"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/gofiber/adaptor/v2"
 )
 
-type Server struct {
-	App   *fiber.App
-	db    *db.Queries
-	rdb   *redis.Client
-	csrv  *chat.ChatService
-	smngr *sessions.SessionManager
-	fsrv  *friends.FriendService
-	cfg   *config.Config
-}
-
-func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager, fsrv *friends.FriendService) (*Server, error) {
+func NewServerWithMetrics(
+	cfg *config.Config,
+	dbQueries *db.Queries,
+	dbConn *sql.DB,
+	rdb *redis.Client,
+	csrv *chat.ChatService,
+	smngr *sessions.SessionManager,
+	fsrv *friends.FriendService,
+) (*Server, error) {
 	// Initialize template engine
 	engine := html.New(cfg.Server.ViewsDir, ".html")
 
@@ -52,19 +55,36 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		Logger:             errLogger,
 		ShowInternalErrors: os.Getenv("APP_ENV") == "development",
 		OnError: func(c *fiber.Ctx, err *apperrors.AppError) {
-			// TODO: Add metrics/monitoring here
+			// ✅ Record errors in Prometheus
+			metrics.RecordError(string(err.Code), fmt.Sprintf("%d", err.StatusCode))
 		},
 	}
 
-	// Create Fiber app with custom error handler
+	// Create Fiber app
 	app := fiber.New(fiber.Config{
-		AppName:      "SArAChat",
-		ServerHeader: "SArAChatServer",
+		AppName:      "SecureChat",
+		ServerHeader: "SecureChat",
 		Views:        engine,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
+
+	// ✅ Register custom collectors
+	metrics.RegisterCollectors(dbConn, rdb, csrv.GetMetrics)
+
+	// ✅ Start background metric updater for session count
+	go metrics.UpdateSessionCount(context.Background(), rdb, 30*time.Second)
+
+	// ✅ Set system info metric
+	metrics.SystemInfo.WithLabelValues(
+		"1.0.0",                         // version
+		runtime.Version(),               // go version
+		time.Now().Format(time.RFC3339), // start time
+	).Set(1)
+
+	// ✅ Add HTTP metrics middleware (BEFORE other middleware)
+	app.Use(metrics.HTTPMetricsMiddleware())
 
 	// Security headers middleware
 	app.Use(security.New(security.Config{
@@ -78,10 +98,10 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
 
-	// This ensures tokens are available when validation happens
+	// CSRF injection
 	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
 
-	// CSRF Protection Middleware (validation)
+	// CSRF validation
 	app.Use(csrf.New(csrf.Config{
 		Storage:    csrfStorage,
 		KeyLookup:  "header:X-CSRF-Token",
@@ -89,25 +109,25 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		Expiration: 1 * time.Hour,
 		Next: func(c *fiber.Ctx) bool {
 			path := c.Path()
-			// Skip CSRF for public auth endpoints and GET requests
 			return path == "/login" ||
 				path == "/register" ||
 				path == "/login-form" ||
 				path == "/register-form" ||
 				path == "/api/v1/status" ||
+				path == "/metrics" || // ✅ Exclude metrics endpoint
 				c.Method() == "GET" ||
 				c.Method() == "HEAD" ||
 				c.Method() == "OPTIONS"
 		},
 	}))
 
-	// Setup favicon middleware
+	// Favicon
 	app.Use(favicon.New(favicon.Config{
 		File: cfg.Server.StaticDir + "/favicon.ico",
 		URL:  "/favicon.ico",
 	}))
 
-	// Serve static files
+	// Static files
 	app.Static("/static", cfg.Server.StaticDir, fiber.Static{
 		Compress:      true,
 		ByteRange:     false,
@@ -132,20 +152,23 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		return nil, fmt.Errorf("failed to setup logging: %w", err)
 	}
 
-	// Setup rate limiting
+	// Rate limiting with metrics
 	app.Use(limiter.New(limiter.Config{
 		Capacity:     cfg.RateLimit.Capacity,
 		RefillRate:   cfg.RateLimit.RefillRate,
 		RefillPeriod: cfg.RateLimit.RefillPeriod,
 		LimitReachedHandler: func(c *fiber.Ctx) error {
+			metrics.IncrementRateLimitExceeded(c.Path())
 			return apperrors.NewRateLimitError()
 		},
 	}))
 
+	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+
 	srv := &Server{
 		App:   app,
 		rdb:   rdb,
-		db:    db,
+		db:    dbQueries,
 		csrv:  csrv,
 		smngr: smngr,
 		fsrv:  fsrv,
@@ -153,18 +176,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	}
 
 	// Register all routes
-	routes.RegisterRoutes(app, db, csrv, fsrv, smngr)
+	routes.RegisterRoutes(app, dbQueries, csrv, fsrv, smngr)
 
 	return srv, nil
-}
-
-func (s *Server) Start() error {
-	addr := s.cfg.ServerAddress()
-	log.Printf("Starting server on %s", addr)
-	return s.App.Listen(addr)
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	log.Println("Shutting down server...")
-	return s.App.ShutdownWithContext(ctx)
 }

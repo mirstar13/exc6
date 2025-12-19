@@ -194,8 +194,8 @@ func Load() (*Config, error) {
 			KeepAliveInterval: getEnvAsDuration("SSE_KEEPALIVE_INTERVAL", 15*time.Second),
 		},
 		RateLimit: RateLimitConfig{
-			Capacity:     getEnvAsInt64("RATE_LIMIT_CAPACITY", 10),
-			RefillRate:   getEnvAsInt64("RATE_LIMIT_REFILL", 1),
+			Capacity:     getEnvAsInt64("RATE_LIMIT_CAPACITY", 200),
+			RefillRate:   getEnvAsInt64("RATE_LIMIT_REFILL", 10),
 			RefillPeriod: getEnvAsDuration("RATE_LIMIT_PERIOD", time.Second),
 		},
 		Database: DatabaseConfig{
