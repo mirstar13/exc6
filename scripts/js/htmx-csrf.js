@@ -8,9 +8,21 @@
 (function() {
     'use strict';
 
+    console.log('HTMX CSRF script loaded at', new Date().toISOString());
+
+    // Check if meta tag exists immediately
+    setTimeout(() => {
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        if (metaTag) {
+            console.log('META TAG EXISTS:', metaTag.getAttribute('content').substring(0, 10) + '...');
+        } else {
+            console.error('META TAG NOT FOUND!');
+        }
+    }, 100);
+
     // Get CSRF token from meta tag, hidden input, or cookie
     function getCSRFToken() {
-        // Priority 1: Meta tag (most reliable)
+        // Priority 1: Meta tag (from dashboard.html)
         const metaTag = document.querySelector('meta[name="csrf-token"]');
         if (metaTag) {
             const token = metaTag.getAttribute('content');
@@ -20,11 +32,14 @@
             }
         }
 
-        // Priority 2: Hidden input in current form context
-        const hiddenInput = document.querySelector('input[name="csrf_token"]');
-        if (hiddenInput && hiddenInput.value) {
-            console.log('CSRF: Found token in hidden input');
-            return hiddenInput.value;
+        // Priority 2: Hidden input in ANY form (search ALL forms, including dynamically loaded ones)
+        const allForms = document.querySelectorAll('form');
+        for (const form of allForms) {
+            const hiddenInput = form.querySelector('input[name="csrf_token"]');
+            if (hiddenInput && hiddenInput.value) {
+                console.log('CSRF: Found token in hidden input (form)');
+                return hiddenInput.value;
+            }
         }
 
         // Priority 3: Cookie (fallback)
@@ -44,6 +59,7 @@
         
         // Only add CSRF token for state-changing methods
         if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            // Get token at REQUEST time, not at page load time
             const token = getCSRFToken();
             if (token) {
                 event.detail.headers['X-CSRF-Token'] = token;
