@@ -66,6 +66,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
 
+	// Security headers middleware
 	app.Use(security.New(security.Config{
 		Development: os.Getenv("APP_ENV") == "development",
 		AllowedScriptSources: []string{
@@ -77,7 +78,11 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
 
-	// CSRF Protection Middleware
+	// CRITICAL FIX: Inject CSRF token BEFORE validation
+	// This ensures tokens are available when validation happens
+	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
+
+	// CSRF Protection Middleware (validation)
 	app.Use(csrf.New(csrf.Config{
 		Storage:    csrfStorage,
 		KeyLookup:  "header:X-CSRF-Token",
@@ -85,16 +90,17 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		Expiration: 1 * time.Hour,
 		Next: func(c *fiber.Ctx) bool {
 			path := c.Path()
+			// Skip CSRF for public auth endpoints and GET requests
 			return path == "/login" ||
 				path == "/register" ||
 				path == "/login-form" ||
 				path == "/register-form" ||
-				path == "/api/v1/status"
+				path == "/api/v1/status" ||
+				c.Method() == "GET" ||
+				c.Method() == "HEAD" ||
+				c.Method() == "OPTIONS"
 		},
 	}))
-
-	// CSRF Token Injection Middleware (for templates)
-	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
 
 	// Setup favicon middleware
 	app.Use(favicon.New(favicon.Config{
