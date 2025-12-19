@@ -55,7 +55,6 @@ func NewServerWithMetrics(
 		Logger:             errLogger,
 		ShowInternalErrors: os.Getenv("APP_ENV") == "development",
 		OnError: func(c *fiber.Ctx, err *apperrors.AppError) {
-			// ✅ Record errors in Prometheus
 			metrics.RecordError(string(err.Code), fmt.Sprintf("%d", err.StatusCode))
 		},
 	}
@@ -70,20 +69,16 @@ func NewServerWithMetrics(
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
 
-	// ✅ Register custom collectors
 	metrics.RegisterCollectors(dbConn, rdb, csrv.GetMetrics)
 
-	// ✅ Start background metric updater for session count
 	go metrics.UpdateSessionCount(context.Background(), rdb, 30*time.Second)
 
-	// ✅ Set system info metric
 	metrics.SystemInfo.WithLabelValues(
 		"1.0.0",                         // version
 		runtime.Version(),               // go version
 		time.Now().Format(time.RFC3339), // start time
 	).Set(1)
 
-	// ✅ Add HTTP metrics middleware (BEFORE other middleware)
 	app.Use(metrics.HTTPMetricsMiddleware())
 
 	// Security headers middleware
@@ -114,7 +109,7 @@ func NewServerWithMetrics(
 				path == "/login-form" ||
 				path == "/register-form" ||
 				path == "/api/v1/status" ||
-				path == "/metrics" || // ✅ Exclude metrics endpoint
+				path == "/metrics" ||
 				c.Method() == "GET" ||
 				c.Method() == "HEAD" ||
 				c.Method() == "OPTIONS"
@@ -157,8 +152,10 @@ func NewServerWithMetrics(
 		Capacity:     cfg.RateLimit.Capacity,
 		RefillRate:   cfg.RateLimit.RefillRate,
 		RefillPeriod: cfg.RateLimit.RefillPeriod,
+		Next: func(c *fiber.Ctx) bool {
+			return c.Path() == "/metrics"
+		},
 		LimitReachedHandler: func(c *fiber.Ctx) error {
-			metrics.IncrementRateLimitExceeded(c.Path())
 			return apperrors.NewRateLimitError()
 		},
 	}))

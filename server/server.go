@@ -137,6 +137,10 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		Capacity:     cfg.RateLimit.Capacity,
 		RefillRate:   cfg.RateLimit.RefillRate,
 		RefillPeriod: cfg.RateLimit.RefillPeriod,
+		Next: func(c *fiber.Ctx) bool {
+			// Skip rate limiting for metrics endpoint
+			return c.Path() == "/metrics"
+		},
 		LimitReachedHandler: func(c *fiber.Ctx) error {
 			return apperrors.NewRateLimitError()
 		},

@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -294,18 +295,49 @@ func (c *ChatServiceStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
-// RegisterCollectors registers all custom collectors
+var (
+	collectorMu    sync.Mutex
+	dbCollector    *DatabaseStatsCollector
+	redisCollector *RedisStatsCollector
+	chatCollector  *ChatServiceStatsCollector
+)
+
+func ResetCollectorRegistry() {
+	collectorMu.Lock()
+	defer collectorMu.Unlock()
+
+	// Unregister existing collectors
+	if dbCollector != nil {
+		prometheus.Unregister(dbCollector)
+		dbCollector = nil
+	}
+	if redisCollector != nil {
+		prometheus.Unregister(redisCollector)
+		redisCollector = nil
+	}
+	if chatCollector != nil {
+		prometheus.Unregister(chatCollector)
+		chatCollector = nil
+	}
+}
+
 func RegisterCollectors(db *sql.DB, redisClient *redis.Client, chatMetrics func() map[string]int64) {
-	if db != nil {
-		prometheus.MustRegister(NewDatabaseStatsCollector(db))
+	collectorMu.Lock()
+	defer collectorMu.Unlock()
+
+	if db != nil && dbCollector == nil {
+		dbCollector = NewDatabaseStatsCollector(db)
+		prometheus.MustRegister(dbCollector)
 	}
 
-	if redisClient != nil {
-		prometheus.MustRegister(NewRedisStatsCollector(redisClient))
+	if redisClient != nil && redisCollector == nil {
+		redisCollector = NewRedisStatsCollector(redisClient)
+		prometheus.MustRegister(redisCollector)
 	}
 
-	if chatMetrics != nil {
-		prometheus.MustRegister(NewChatServiceStatsCollector(chatMetrics))
+	if chatMetrics != nil && chatCollector == nil {
+		chatCollector = NewChatServiceStatsCollector(chatMetrics)
+		prometheus.MustRegister(chatCollector)
 	}
 }
 

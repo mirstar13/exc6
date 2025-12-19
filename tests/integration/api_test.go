@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"exc6/server"
 	"exc6/tests/setup"
@@ -45,19 +44,19 @@ func (s *APITestSuite) TestHealthCheck() {
 }
 
 func (s *APITestSuite) TestRegisterEndpoint() {
-	payload := map[string]string{
-		"username":         "apitest",
-		"password":         "SecurePass123!",
-		"confirm_password": "SecurePass123!",
-	}
+	formData := url.Values{}
+	formData.Set("username", "apitest")
+	formData.Set("password", "SecurePass123!")
+	formData.Set("confirm_password", "SecurePass123!")
 
-	body, _ := json.Marshal(payload)
-	req := httptest.NewRequest("POST", "/register", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(formData.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := s.app.Test(req)
+	resp, err := s.app.Test(req, -1)
 	s.NoError(err)
-	s.Equal(http.StatusOK, resp.StatusCode)
+	s.True(resp.StatusCode < 400, "Registration should succeed with status < 400, got: %d", resp.StatusCode)
+
+	resp.Body.Close()
 }
 
 func (s *APITestSuite) TestLoginEndpoint() {

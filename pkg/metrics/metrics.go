@@ -174,20 +174,6 @@ var (
 		[]string{"query", "status"},
 	)
 
-	DatabaseConnectionsActive = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "database_connections_active",
-			Help: "Current number of active database connections",
-		},
-	)
-
-	DatabaseConnectionsIdle = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "database_connections_idle",
-			Help: "Current number of idle database connections",
-		},
-	)
-
 	// Redis Metrics
 	RedisOperationDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -196,13 +182,6 @@ var (
 			Buckets: []float64{.0001, .0005, .001, .005, .01, .025, .05, .1},
 		},
 		[]string{"operation", "status"},
-	)
-
-	RedisConnectionsActive = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "redis_connections_active",
-			Help: "Current number of active Redis connections",
-		},
 	)
 
 	RedisCacheHits = promauto.NewCounter(

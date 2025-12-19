@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"exc6/server"
 	"exc6/tests/setup"
 	"fmt"
@@ -32,45 +33,83 @@ func (s *E2ETestSuite) SetupSuite() {
 	s.app = srv.App
 }
 
-// Helper: Extract CSRF token from response cookies
+// Helper: Extract CSRF token from response
 func (s *E2ETestSuite) extractCSRFToken(resp *http.Response) string {
+	// Try cookie first (most reliable)
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "csrf_token" {
 			return cookie.Value
 		}
 	}
+
+	// Try to extract from HTML meta tag
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	// Important: Restore the body so it can be read again if needed
+	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	bodyStr := string(bodyBytes)
+
+	// Look for: <meta name="csrf-token" content="TOKEN">
+	if idx := strings.Index(bodyStr, `name="csrf-token"`); idx != -1 {
+		// Find the content attribute after this
+		contentStart := strings.Index(bodyStr[idx:], `content="`)
+		if contentStart != -1 {
+			contentStart += idx + 9 // Move past 'content="'
+			contentEnd := strings.Index(bodyStr[contentStart:], `"`)
+			if contentEnd != -1 {
+				token := bodyStr[contentStart : contentStart+contentEnd]
+				return token
+			}
+		}
+	}
+
 	return ""
 }
 
-// Helper: Make authenticated request with CSRF token
+// Helper: Make authenticated request with automatic CSRF handling
 func (s *E2ETestSuite) makeAuthRequest(method, path, body, sessionID string) (*http.Response, error) {
-	// For non-GET requests, get CSRF token first
-	if method != "GET" && method != "HEAD" {
-		getReq := httptest.NewRequest("GET", "/profile", nil)
+	// For state-changing methods, we need CSRF token
+	needsCSRF := method != "GET" && method != "HEAD" && method != "OPTIONS"
+
+	var csrfToken string
+
+	if needsCSRF {
+		// Make a separate GET request to obtain CSRF token
+		getReq := httptest.NewRequest("GET", "/dashboard", nil)
 		getReq.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
 
 		getResp, err := s.app.Test(getReq, -1)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get CSRF token page: %w", err)
 		}
 
-		csrfToken := s.extractCSRFToken(getResp)
+		csrfToken = s.extractCSRFToken(getResp)
+		getResp.Body.Close()
 
-		// Now make the actual request with CSRF token
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
-
-		if csrfToken != "" {
-			req.Header.Set("X-CSRF-Token", csrfToken)
+		if csrfToken == "" {
+			return nil, fmt.Errorf("could not extract CSRF token from dashboard")
 		}
-
-		return s.app.Test(req, -1)
 	}
 
-	// For GET requests, just add session
+	// Create the actual request
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
+
+	if body != "" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	// Add session cookie
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+
+	// Add CSRF token header if we have one
+	if csrfToken != "" {
+		req.Header.Set("X-CSRF-Token", csrfToken)
+	}
+
 	return s.app.Test(req, -1)
 }
 
@@ -86,7 +125,8 @@ func (s *E2ETestSuite) TestCompleteUserJourney() {
 
 	registerResp, err := s.app.Test(registerReq, -1)
 	s.NoError(err)
-	s.Equal(http.StatusOK, registerResp.StatusCode)
+	s.True(registerResp.StatusCode < 400, "Registration should succeed, got status: %d", registerResp.StatusCode)
+	registerResp.Body.Close()
 
 	// 2. Login
 	loginReq := httptest.NewRequest("POST", "/login", strings.NewReader(
@@ -104,7 +144,8 @@ func (s *E2ETestSuite) TestCompleteUserJourney() {
 			sessionID = cookie.Value
 		}
 	}
-	s.NotEmpty(sessionID)
+	s.NotEmpty(sessionID, "Session cookie should be set")
+	loginResp.Body.Close()
 
 	// 3. Access dashboard
 	dashboardReq := httptest.NewRequest("GET", "/dashboard", nil)
@@ -115,30 +156,19 @@ func (s *E2ETestSuite) TestCompleteUserJourney() {
 
 	dashboardResp, err := s.app.Test(dashboardReq, -1)
 	s.NoError(err)
-	s.Equal(http.StatusOK, dashboardResp.StatusCode)
+	s.Equal(http.StatusOK, dashboardResp.StatusCode, "Dashboard should be accessible")
+	dashboardResp.Body.Close()
 
 	// 4. View profile
-	profileReq := httptest.NewRequest("GET", "/profile", nil)
-	profileReq.AddCookie(&http.Cookie{
-		Name:  "session_id",
-		Value: sessionID,
-	})
-
-	profileResp, err := s.app.Test(profileReq, -1)
+	profileResp, err := s.makeAuthRequest("GET", "/profile", "", sessionID)
 	s.NoError(err)
-	s.Equal(http.StatusOK, profileResp.StatusCode)
+	s.Equal(http.StatusOK, profileResp.StatusCode, "Profile should be accessible")
+	profileResp.Body.Close()
 
 	// 5. Logout
-	logoutReq := httptest.NewRequest("POST", "/logout", nil)
-	logoutReq.AddCookie(&http.Cookie{
-		Name:  "session_id",
-		Value: sessionID,
-	})
-
-	logoutResp, err := s.app.Test(logoutReq, -1)
+	logoutResp, err := s.makeAuthRequest("POST", "/logout", "", sessionID)
 	s.NoError(err)
-
-	_ = logoutResp.Body.Close()
+	logoutResp.Body.Close()
 
 	// 6. Try to access dashboard after logout (should redirect)
 	dashboardReq2 := httptest.NewRequest("GET", "/dashboard", nil)
@@ -149,8 +179,9 @@ func (s *E2ETestSuite) TestCompleteUserJourney() {
 
 	dashboardResp2, err := s.app.Test(dashboardReq2, -1)
 	s.NoError(err)
-	// Should redirect to login
-	s.True(dashboardResp2.StatusCode == http.StatusFound || dashboardResp2.StatusCode == http.StatusUnauthorized)
+	s.True(dashboardResp2.StatusCode == http.StatusFound || dashboardResp2.StatusCode == http.StatusUnauthorized,
+		"After logout, should redirect or return unauthorized")
+	dashboardResp2.Body.Close()
 }
 
 func (s *E2ETestSuite) TestFriendRequestWorkflow() {
@@ -161,10 +192,11 @@ func (s *E2ETestSuite) TestFriendRequestWorkflow() {
 	sessionID1 := s.CreateTestSession(user1.Username, user1.ID.String())
 	sessionID2 := s.CreateTestSession(user2.Username, user2.ID.String())
 
-	// 1. User1 sends friend request (with CSRF)
+	// 1. User1 sends friend request
 	sendResp, err := s.makeAuthRequest("POST", "/friends/request/"+user2.Username, "", sessionID1)
-	s.NoError(err)
-	s.Equal(http.StatusOK, sendResp.StatusCode)
+	s.Require().NoError(err, "Should be able to send friend request")
+	s.Equal(http.StatusOK, sendResp.StatusCode, "Friend request should succeed")
+	sendResp.Body.Close()
 
 	// 2. User2 sees pending request
 	friendsReq := httptest.NewRequest("GET", "/friends", nil)
@@ -173,21 +205,23 @@ func (s *E2ETestSuite) TestFriendRequestWorkflow() {
 	friendsResp, err := s.app.Test(friendsReq, -1)
 	s.NoError(err)
 	body, _ := io.ReadAll(friendsResp.Body)
-	s.Contains(string(body), user1.Username) // Should see request from user1
+	s.Contains(string(body), user1.Username, "User2 should see friend request from User1")
+	friendsResp.Body.Close()
 
-	// 3. User2 accepts request (with CSRF)
+	// 3. User2 accepts request
 	acceptResp, err := s.makeAuthRequest("POST", "/friends/accept/"+user1.Username, "", sessionID2)
-	s.NoError(err)
-	s.Equal(http.StatusOK, acceptResp.StatusCode)
+	s.Require().NoError(err, "Should be able to accept friend request")
+	s.Equal(http.StatusOK, acceptResp.StatusCode, "Friend accept should succeed")
+	acceptResp.Body.Close()
 
 	// 4. Both users should see each other as friends
 	friends1, err := s.FriendSvc.GetUserFriends(s.Ctx, user1.Username)
 	s.NoError(err)
-	s.Len(friends1, 1)
+	s.Len(friends1, 1, "User1 should have 1 friend")
 
 	friends2, err := s.FriendSvc.GetUserFriends(s.Ctx, user2.Username)
 	s.NoError(err)
-	s.Len(friends2, 1)
+	s.Len(friends2, 1, "User2 should have 1 friend")
 }
 
 func (s *E2ETestSuite) TestChatWorkflow() {
@@ -204,23 +238,22 @@ func (s *E2ETestSuite) TestChatWorkflow() {
 	sessionID1 := s.CreateTestSession(user1.Username, user1.ID.String())
 
 	// 1. Load chat window
-	chatReq := httptest.NewRequest("GET", "/chat/"+user2.Username, nil)
-	chatReq.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID1})
-
-	chatResp, err := s.app.Test(chatReq, -1)
+	chatResp, err := s.makeAuthRequest("GET", "/chat/"+user2.Username, "", sessionID1)
 	s.NoError(err)
-	s.Equal(http.StatusOK, chatResp.StatusCode)
+	s.Equal(http.StatusOK, chatResp.StatusCode, "Chat window should load")
+	chatResp.Body.Close()
 
-	// 2. Send message (with CSRF)
+	// 2. Send message with CSRF
 	sendResp, err := s.makeAuthRequest("POST", "/chat/"+user2.Username, "content=Hello friend!", sessionID1)
-	s.NoError(err)
-	s.Equal(http.StatusOK, sendResp.StatusCode)
+	s.Require().NoError(err, "Should be able to send message")
+	s.Equal(http.StatusOK, sendResp.StatusCode, "Message send should succeed")
+	sendResp.Body.Close()
 
 	// 3. Verify message in history
-	time.Sleep(500 * time.Millisecond) // Wait for caching
+	time.Sleep(500 * time.Millisecond)
 
 	history, err := s.ChatSvc.GetHistory(s.Ctx, user1.Username, user2.Username)
 	s.NoError(err)
 	s.Require().Len(history, 1, "Should have exactly 1 message")
-	s.Equal("Hello friend!", history[0].Content)
+	s.Equal("Hello friend!", history[0].Content, "Message content should match")
 }

@@ -38,7 +38,8 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 		// Validate password match
 		if password != confirmPassword {
 			err := apperrors.NewPasswordMismatch()
-			return ctx.Render("partials/register", fiber.Map{
+			// FIX: Return proper status code for validation errors
+			return ctx.Status(fiber.StatusBadRequest).Render("partials/register", fiber.Map{
 				"Error": err.Message,
 			})
 		}
@@ -46,7 +47,8 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 		// Validate password strength
 		if err := utils.ValidatePasswordStrength(password); err != nil {
 			appErr := apperrors.FromError(err)
-			return ctx.Render("partials/register", fiber.Map{
+			// FIX: Return proper status code
+			return ctx.Status(fiber.StatusBadRequest).Render("partials/register", fiber.Map{
 				"Error": appErr.Message,
 			})
 		}
@@ -57,7 +59,8 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 		// Check if user exists
 		if _, err := qdb.GetUserByUsername(dbCtx, username); err == nil {
 			err := apperrors.NewUserExists(username)
-			return ctx.Render("partials/register", fiber.Map{
+			// FIX: Return proper status code
+			return ctx.Status(fiber.StatusConflict).Render("partials/register", fiber.Map{
 				"Error": err.Message,
 			})
 		}
@@ -78,7 +81,7 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 			CustomIcon:   sql.NullString{String: "", Valid: true},
 		}); err != nil {
 			appErr := apperrors.FromError(err)
-			return ctx.Render("partials/register", fiber.Map{
+			return ctx.Status(fiber.StatusInternalServerError).Render("partials/register", fiber.Map{
 				"Error": appErr.Message,
 			})
 		}

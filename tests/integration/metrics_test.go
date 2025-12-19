@@ -25,8 +25,20 @@ func TestMetricsSuite(t *testing.T) {
 func (s *MetricsTestSuite) SetupSuite() {
 	s.TestSuite.SetupSuite()
 
-	// Create test server with metrics enabled
-	srv, err := server.NewServer(s.Config, s.Queries, s.Redis, s.ChatSvc, s.SessionMgr, s.FriendSvc)
+	// Reset collector state before registering
+	metrics.ResetCollectorRegistry()
+
+	metrics.RegisterCollectors(s.DB, s.Redis, s.ChatSvc.GetMetrics)
+
+	srv, err := server.NewServerWithMetrics(
+		s.Config,
+		s.Queries,
+		s.DB,
+		s.Redis,
+		s.ChatSvc,
+		s.SessionMgr,
+		s.FriendSvc,
+	)
 	s.Require().NoError(err)
 	s.app = srv.App
 }
@@ -36,7 +48,7 @@ func (s *MetricsTestSuite) TestMetricsEndpointExists() {
 	resp, err := s.app.Test(req)
 
 	s.NoError(err)
-	s.Equal(200, resp.StatusCode)
+	s.Equal(200, resp.StatusCode, "Metrics endpoint should return 200")
 
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
@@ -47,12 +59,11 @@ func (s *MetricsTestSuite) TestMetricsEndpointExists() {
 }
 
 func (s *MetricsTestSuite) TestHTTPMetricsRecorded() {
-	// Make a request
+	// Make a request to generate metrics
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := s.app.Test(req)
 	s.NoError(err)
-
-	_ = resp
+	resp.Body.Close()
 
 	// Check metrics endpoint
 	metricsReq := httptest.NewRequest("GET", "/metrics", nil)
@@ -63,8 +74,8 @@ func (s *MetricsTestSuite) TestHTTPMetricsRecorded() {
 	bodyStr := string(body)
 
 	// Verify HTTP metrics exist
-	s.Contains(bodyStr, "http_requests_total")
-	s.Contains(bodyStr, "http_request_duration_seconds")
+	s.Contains(bodyStr, "http_requests_total", "Should have http_requests_total metric")
+	s.Contains(bodyStr, "http_request_duration_seconds", "Should have http_request_duration_seconds metric")
 }
 
 func (s *MetricsTestSuite) TestChatMetricsRecorded() {
@@ -185,7 +196,8 @@ func (s *MetricsTestSuite) TestMetricsCardinality() {
 
 	for _, endpoint := range endpoints {
 		req := httptest.NewRequest("GET", endpoint, nil)
-		s.app.Test(req)
+		resp, _ := s.app.Test(req)
+		resp.Body.Close()
 	}
 
 	// Check metrics
@@ -225,9 +237,9 @@ func (s *MetricsTestSuite) TestDatabaseMetricsCollector() {
 	bodyStr := string(body)
 
 	// Verify database pool metrics exist
-	s.Contains(bodyStr, "database_connections_in_use")
-	s.Contains(bodyStr, "database_connections_idle")
-	s.Contains(bodyStr, "database_max_open_connections")
+	s.Contains(bodyStr, "database_connections_in_use", "Should have database_connections_in_use metric")
+	s.Contains(bodyStr, "database_connections_idle", "Should have database_connections_idle metric")
+	s.Contains(bodyStr, "database_max_open_connections", "Should have database_max_open_connections metric")
 }
 
 func (s *MetricsTestSuite) TestRedisMetricsCollector() {
@@ -244,9 +256,9 @@ func (s *MetricsTestSuite) TestRedisMetricsCollector() {
 	bodyStr := string(body)
 
 	// Verify Redis pool metrics exist
-	s.Contains(bodyStr, "redis_pool_hits_total")
-	s.Contains(bodyStr, "redis_pool_misses_total")
-	s.Contains(bodyStr, "redis_pool_total_connections")
+	s.Contains(bodyStr, "redis_pool_hits_total", "Should have redis_pool_hits_total metric")
+	s.Contains(bodyStr, "redis_pool_misses_total", "Should have redis_pool_misses_total metric")
+	s.Contains(bodyStr, "redis_pool_total_connections", "Should have redis_pool_total_connections metric")
 }
 
 func (s *MetricsTestSuite) TestMetricsPerformance() {
