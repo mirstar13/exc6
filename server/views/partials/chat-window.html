@@ -77,6 +77,8 @@
             
             {{if .CSRFToken}}
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            {{else}}
+                <!-- ERROR: CSRFToken is empty in chat window! -->
             {{end}}
 
             <button type="button" class="p-3 text-signal-text-sub hover:text-signal-text-main transition-colors rounded-full hover:bg-signal-surface mb-0.5 shrink-0">

@@ -42,11 +42,24 @@ type Logger struct {
 }
 
 // New creates a new logger instance
-func New() *Logger {
-	return &Logger{
-		logger: log.New(os.Stdout, "", 0),
-		level:  INFO,
-		fields: make(map[string]interface{}),
+func New(logfile string) *Logger {
+	if logfile != "" {
+		file, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to open log file: %v", err))
+		}
+
+		return &Logger{
+			logger: log.New(file, "", 0),
+			level:  INFO,
+			fields: make(map[string]interface{}),
+		}
+	} else {
+		return &Logger{
+			logger: log.New(os.Stdout, "", 0),
+			level:  INFO,
+			fields: make(map[string]interface{}),
+		}
 	}
 }
 
@@ -88,6 +101,10 @@ func (l *Logger) WithFields(fields map[string]interface{}) *Logger {
 		newLogger.fields[k] = v
 	}
 	return newLogger
+}
+
+func (l *Logger) WithError(err error) *Logger {
+	return l.WithField("error", err)
 }
 
 // log formats and writes a log message
@@ -144,7 +161,7 @@ func (l *Logger) Fatal(msg string, args ...interface{}) {
 }
 
 // Global default logger
-var defaultLogger = New()
+var defaultLogger = New("./log/server.log")
 
 // Info logs using the default logger
 func Info(msg string, args ...interface{}) {
@@ -174,4 +191,8 @@ func WithField(key string, value interface{}) *Logger {
 // WithFields returns a logger with fields using the default logger
 func WithFields(fields map[string]interface{}) *Logger {
 	return defaultLogger.WithFields(fields)
+}
+
+func WithError(err error) *Logger {
+	return defaultLogger.WithError(err)
 }

@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"exc6/services/friends"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -46,10 +48,36 @@ func HandleDashboard(fsrv *friends.FriendService, qdb *db.Queries) fiber.Handler
 			customIconValue = user.CustomIcon.String
 		}
 
-		// Get CSRF token from context
+		// Get CSRF token from context - WITH DETAILED LOGGING
 		csrfToken := ""
 		if token := c.Locals("csrf_token"); token != nil {
-			csrfToken = token.(string)
+			if tokenStr, ok := token.(string); ok {
+				csrfToken = tokenStr
+				logger.WithFields(map[string]interface{}{
+					"username":     username,
+					"token_length": len(csrfToken),
+				}).Info("Dashboard: CSRF token retrieved from locals")
+			} else {
+				logger.WithFields(map[string]interface{}{
+					"username":   username,
+					"token_type": fmt.Sprintf("%T", token),
+				}).Error("Dashboard: CSRF token in locals is not a string!")
+			}
+		} else {
+			logger.WithField("username", username).Error("Dashboard: CSRF token is nil in locals!")
+		}
+
+		// CRITICAL: Log if token is missing
+		if csrfToken == "" {
+			logger.WithFields(map[string]interface{}{
+				"username":   username,
+				"session_id": c.Cookies("session_id"),
+			}).Error("Dashboard: CSRF token is EMPTY! Template will not render meta tag!")
+		} else {
+			logger.WithFields(map[string]interface{}{
+				"username":     username,
+				"token_length": len(csrfToken),
+			}).Info("Dashboard: CSRF token OK, will render to template")
 		}
 
 		// Convert FriendInfo to ContactData for template

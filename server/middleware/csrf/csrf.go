@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"exc6/apperrors"
+	"exc6/pkg/logger"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -61,12 +62,27 @@ func New(config ...Config) fiber.Handler {
 		sessionID := c.Cookies("session_id")
 		if sessionID == "" {
 			// No session yet - skip CSRF check
+			logger.Debug("CSRF Validation: No session ID, skipping validation")
 			return c.Next()
 		}
 
 		// Extract token from request
 		token := extractor(c)
+
+		logger.WithFields(map[string]interface{}{
+			"method":       method,
+			"path":         path,
+			"session_id":   sessionID,
+			"token_length": len(token),
+		}).Debug("CSRF Validation: Validating request")
+
 		if token == "" {
+			logger.WithFields(map[string]interface{}{
+				"method":     method,
+				"path":       path,
+				"session_id": sessionID,
+			}).Warn("CSRF Validation: Token missing from request")
+
 			return cfg.ErrorHandler(c, apperrors.New(
 				apperrors.ErrCodeValidationFailed,
 				"CSRF token missing",
@@ -77,16 +93,33 @@ func New(config ...Config) fiber.Handler {
 		// Validate token
 		storedToken, err := cfg.Storage.Get(sessionID)
 		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"session_id": sessionID,
+				"error":      err,
+			}).Error("CSRF Validation: Failed to retrieve stored token")
+
 			return cfg.ErrorHandler(c, err)
 		}
 
 		if token != storedToken {
+			logger.WithFields(map[string]interface{}{
+				"session_id":          sessionID,
+				"token_length":        len(token),
+				"stored_token_length": len(storedToken),
+			}).Warn("CSRF Validation: Token mismatch")
+
 			return cfg.ErrorHandler(c, apperrors.New(
 				apperrors.ErrCodeValidationFailed,
 				"CSRF token invalid",
 				fiber.StatusForbidden,
 			))
 		}
+
+		logger.WithFields(map[string]interface{}{
+			"method":     method,
+			"path":       path,
+			"session_id": sessionID,
+		}).Debug("CSRF Validation: Token valid")
 
 		// Token valid, continue
 		return c.Next()
@@ -107,23 +140,40 @@ func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (str
 	// Generate random token
 	token, err := generateRandomToken(32)
 	if err != nil {
+		logger.WithError(err).Error("CSRF: Failed to generate random token")
 		return "", err
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"session_id":   sessionID,
+		"token_length": len(token),
+	}).Debug("CSRF: Generated random token")
 
 	// Store token associated with session
 	if err := storage.Set(sessionID, token, expiration); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"session_id": sessionID,
+			"error":      err,
+		}).Error("CSRF: Failed to store token")
 		return "", err
 	}
 
-	// Set cookie with token reference
+	logger.WithField("session_id", sessionID).Debug("CSRF: Token stored in Redis")
+
+	// CRITICAL FIX: Don't set cookie as HTTPOnly and Secure for development
+	// The token should be accessible via meta tag, not cookie
+	// But we set it anyway as a backup
 	c.Cookie(&fiber.Cookie{
 		Name:     "csrf_token",
 		Value:    token,
 		Expires:  time.Now().Add(expiration),
-		HTTPOnly: true,
-		Secure:   true,
+		HTTPOnly: false, // IMPORTANT: Allow JavaScript to read this
+		Secure:   false, // IMPORTANT: Allow HTTP (for development)
 		SameSite: "Strict",
+		Path:     "/",
 	})
+
+	logger.WithField("session_id", sessionID).Debug("CSRF: Cookie set")
 
 	return token, nil
 }
