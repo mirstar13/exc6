@@ -42,8 +42,8 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 		Next:           nil,
 	}))
 
-	// Dashboard - main chat interface (NOW SHOWS ONLY FRIENDS)
-	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.db))
+	// Dashboard - main chat interface (shows friends AND groups)
+	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.gsrv, ar.db))
 
 	// Chat routes
 	ar.registerChatRoutes(authed)
@@ -54,6 +54,7 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	// Friend management routes
 	ar.registerFriendRoutes(authed)
 
+	// Group management routes
 	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv)
 }
 

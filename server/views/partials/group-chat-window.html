@@ -1,202 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {{if .CSRFToken}}
-    <meta name="csrf-token" content="{{.CSRFToken}}">
-    {{end}}
-    <title>{{.Group.Name}} - SecureChat</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="/scripts/js/htmx-csrf.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-                    },
-                    colors: {
-                        signal: {
-                            bg: '#121212',          
-                            sidebar: '#181818',     
-                            header: '#1E1E1E',      
-                            surface: '#2C2C2C',     
-                            hover: '#333333',       
-                            blue: '#2C6BED',        
-                            bluehover: '#3876F3',
-                            bubble: '#303030',      
-                            text: {
-                                main: '#F2F2F2',
-                                sub: '#848586',
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: #333;
-            border-radius: 4px;
-            border: 2px solid #181818;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background-color: #4a4a4a;
-        }
-        .custom-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: #333 transparent;
-        }
-    </style>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-</head>
-<body class="h-screen w-screen m-0 overflow-hidden bg-signal-bg text-signal-text-main font-sans">
-
-    <div class="flex h-full w-full">
-        
-        <!-- Sidebar with group info -->
-        <aside class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20">
-            <div class="h-16 px-4 bg-signal-sidebar flex items-center gap-3 shrink-0 border-b border-white/5">
-                <a href="/dashboard" class="hover:bg-signal-surface p-2 rounded-full transition-colors">
-                    <svg class="w-5 h-5 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                    </svg>
-                </a>
-                
+<article class="flex h-full w-full">
+    <!-- Group Info Sidebar -->
+    <aside class="w-[280px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5">
+        <div class="p-4 border-b border-white/5">
+            <div class="flex items-center gap-3 mb-4">
                 {{if .Group.CustomIcon}}
-                <img src="{{.Group.CustomIcon}}" class="w-10 h-10 rounded-full" alt="{{.Group.Name}}">
+                <img src="{{.Group.CustomIcon}}" class="w-12 h-12 rounded-full" alt="{{.Group.Name}}">
                 {{else}}
-                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
                     {{slice .Group.Name 0 1}}
                 </div>
                 {{end}}
-                
                 <div class="flex-1 min-w-0">
-                    <h2 class="font-semibold text-signal-text-main truncate">{{.Group.Name}}</h2>
+                    <h3 class="font-semibold text-signal-text-main truncate">{{.Group.Name}}</h3>
                     <p class="text-xs text-signal-text-sub">{{.Group.MemberCount}} members</p>
                 </div>
             </div>
+            {{if .Group.Description}}
+            <p class="text-sm text-signal-text-sub">{{.Group.Description}}</p>
+            {{end}}
+        </div>
 
-            <!-- Group Members -->
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-4">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-semibold text-signal-text-main uppercase">Members</h3>
-                    {{if eq .Group.UserRole "admin"}}
-                    <button onclick="document.getElementById('add-member-form').classList.toggle('hidden')" 
-                            class="text-signal-blue hover:text-signal-bluehover">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                        </svg>
-                    </button>
+        <!-- Members List -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-xs font-semibold text-signal-text-sub uppercase">Members</h4>
+                <button onclick="openGroupManageModal()" 
+                        class="text-signal-blue hover:text-signal-bluehover">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="members-list" class="space-y-2">
+                <!-- Members will be loaded here -->
+            </div>
+        </div>
+    </aside>
+
+    <!-- Chat Area -->
+    <div class="flex-1 flex flex-col bg-signal-bg h-full">
+        <!-- Header -->
+        <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 shrink-0">
+            <div class="flex items-center gap-3">
+                <h1 class="text-lg font-semibold text-signal-text-main">{{.Group.Name}}</h1>
+            </div>
+            <div class="text-xs text-signal-text-sub" id="connection-status">Connected</div>
+        </header>
+
+        <!-- Messages -->
+        <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
+            <div class="flex flex-col justify-end min-h-full">
+                <div class="text-center mb-4 shrink-0">
+                    <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
+                </div>
+                
+                <div id="message-list" class="flex flex-col gap-2">
+                    {{$me := .Username}}
+                    {{range .Messages}}
+                        {{if eq .FromID $me}}
+                            <!-- My message -->
+                            <div class="flex w-full justify-end group" data-message-id="{{.MessageID}}">
+                                <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white rounded-2xl rounded-tr-sm" style="word-break: break-word; overflow-wrap: break-word;">
+                                    {{.Content}}
+                                    <div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">Now</div>
+                                </div>
+                            </div>
+                        {{else}}
+                            <!-- Other's message -->
+                            <div class="flex w-full justify-start group" data-message-id="{{.MessageID}}">
+                                <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">
+                                    <div class="flex items-start gap-2">
+                                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                            {{slice .FromID 0 1}}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-xs font-semibold text-signal-blue mb-0.5">{{.FromID}}</div>
+                                            <div class="px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm" style="word-break: break-word; overflow-wrap: break-word;">
+                                                {{.Content}}
+                                                <div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">Now</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {{end}}
                     {{end}}
                 </div>
+            </div>
+        </div>
 
-                {{if eq .Group.UserRole "admin"}}
-                <form id="add-member-form" class="hidden mb-4 bg-signal-surface rounded-lg p-3" 
-                      hx-post="/groups/{{.Group.ID}}/members" 
-                      hx-target="#members-list"
-                      hx-swap="innerHTML">
-                    <div class="flex gap-2">
-                        <input type="text" name="username" placeholder="Username" required
-                               class="flex-1 bg-signal-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-signal-text-main">
-                        <button type="submit" class="px-3 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-lg text-sm">
-                            Add
-                        </button>
-                    </div>
-                </form>
+        <!-- Message Input -->
+        <footer class="p-4 bg-signal-bg shrink-0">
+            <form id="chat-form" hx-post="/groups/{{.Group.ID}}/send" hx-trigger="submit" hx-swap="none" class="flex items-end gap-2">
+                {{if .CSRFToken}}
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 {{end}}
 
-                <div id="members-list" hx-get="/groups/{{.Group.ID}}/members" hx-trigger="load" hx-swap="innerHTML">
-                    <div class="text-signal-text-sub text-sm">Loading members...</div>
+                <div class="flex-1 bg-signal-surface rounded-[24px] flex items-center px-4 py-2 border border-transparent focus-within:border-signal-text-sub/30 transition-all">
+                    <input id="chat-input" type="text" name="content" placeholder="Message {{.Group.Name}}" required autocomplete="off"
+                           class="w-full bg-transparent text-signal-text-main placeholder-signal-text-sub/70 focus:outline-none py-1.5">
+                </div>
+                
+                <button type="submit"
+                        class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 group shrink-0">
+                    <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                    </svg>
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <!-- Group Management Modal -->
+    <div id="group-manage-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-signal-surface rounded-2xl p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-signal-text-main">Manage Group</h3>
+                <button onclick="closeGroupManageModal()" class="text-signal-text-sub hover:text-signal-text-main">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Add Member Form -->
+            <div class="mb-6">
+                <h4 class="text-sm font-semibold text-signal-text-main mb-3">Add Member</h4>
+                <form hx-post="/groups/{{.Group.ID}}/members" 
+                      hx-target="#members-list" 
+                      hx-swap="innerHTML"
+                      class="flex gap-2">
+                    <input type="text" name="username" placeholder="Username" required
+                           class="flex-1 bg-signal-bg border border-white/10 rounded-lg px-3 py-2 text-sm text-signal-text-main focus:outline-none focus:border-signal-blue">
+                    <button type="submit" class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-lg text-sm transition-all">
+                        Add
+                    </button>
+                </form>
+            </div>
+
+            <!-- Members List in Modal -->
+            <div>
+                <h4 class="text-sm font-semibold text-signal-text-main mb-3">Members</h4>
+                <div id="modal-members-list" 
+                     hx-get="/groups/{{.Group.ID}}/members" 
+                     hx-trigger="load"
+                     hx-swap="innerHTML"
+                     class="space-y-2">
+                    Loading...
                 </div>
             </div>
 
-            <!-- Group Actions -->
-            <div class="p-4 border-t border-white/5 space-y-2">
-                {{if eq .Group.UserRole "admin"}}
+            {{if eq .Group.UserRole "admin"}}
+            <!-- Admin Actions -->
+            <div class="mt-6 pt-6 border-t border-white/5">
                 <button hx-delete="/groups/{{.Group.ID}}" 
-                        hx-confirm="Delete this group? This cannot be undone."
+                        hx-confirm="Delete {{.Group.Name}}? This cannot be undone."
                         class="w-full text-left px-3 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-sm">
                     Delete Group
                 </button>
-                {{else}}
-                <button hx-delete="/groups/{{.Group.ID}}/members/{{.Username}}"
-                        hx-confirm="Leave {{.Group.Name}}?"
-                        class="w-full text-left px-3 py-2 text-signal-text-sub hover:bg-signal-surface rounded-lg transition-colors text-sm">
-                    Leave Group
-                </button>
-                {{end}}
             </div>
-        </aside>
-
-        <!-- Main Chat Area -->
-        <main class="flex-1 flex flex-col bg-signal-bg h-full">
-            
-            <!-- Chat Header -->
-            <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 shrink-0">
-                <div class="flex items-center gap-3">
-                    <h1 class="text-lg font-semibold text-signal-text-main">{{.Group.Name}}</h1>
-                    {{if .Group.Description}}
-                    <span class="text-sm text-signal-text-sub">• {{.Group.Description}}</span>
-                    {{end}}
-                </div>
-                <div class="text-xs text-signal-text-sub" id="connection-status">Connected</div>
-            </header>
-
-            <!-- Messages -->
-            <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
-                <div class="flex flex-col justify-end min-h-full">
-                    <div class="text-center mb-4 shrink-0">
-                        <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
-                    </div>
-                    
-                    <div id="message-list" class="flex flex-col gap-1">
-                        {{range .Messages}}
-                        <div class="flex w-full mb-1 group {{if eq .FromID $.Username}}justify-end{{else}}justify-start{{end}}" data-message-id="{{.MessageID}}">
-                            <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative {{if eq .FromID $.Username}}bg-signal-blue text-white rounded-2xl rounded-tr-sm{{else}}bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
-                                {{if ne .FromID $.Username}}
-                                <div class="text-xs font-semibold text-signal-blue mb-1">{{.FromID}}</div>
-                                {{end}}
-                                {{.Content}}
-                                <div class="text-[10px] opacity-60 text-right mt-1 select-none {{if eq .FromID $.Username}}text-blue-100{{else}}text-signal-text-sub{{end}}">Now</div>
-                            </div>
-                        </div>
-                        {{end}}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Message Input -->
-            <footer class="p-4 bg-signal-bg shrink-0">
-                <form id="chat-form" hx-post="/groups/{{.Group.ID}}/send" hx-trigger="submit" hx-swap="none" class="flex items-end gap-2">
-                    {{if .CSRFToken}}
-                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                    {{end}}
-
-                    <div class="flex-1 bg-signal-surface rounded-[24px] flex items-center px-4 py-2 border border-transparent focus-within:border-signal-text-sub/30 transition-all">
-                        <input id="chat-input" type="text" name="content" placeholder="Message {{.Group.Name}}" required autocomplete="off"
-                               class="w-full bg-transparent text-signal-text-main placeholder-signal-text-sub/70 focus:outline-none py-1.5">
-                    </div>
-                    
-                    <button type="submit" class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 group shrink-0">
-                        <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-                        </svg>
-                    </button>
-                </form>
-            </footer>
-
-        </main>
+            {{end}}
+        </div>
     </div>
 
     <script>
@@ -215,10 +180,7 @@
             
             function getLastMessageId() {
                 const messages = messageList.querySelectorAll('[data-message-id]');
-                if (messages.length > 0) {
-                    return messages[messages.length - 1].dataset.messageId;
-                }
-                return '';
+                return messages.length > 0 ? messages[messages.length - 1].dataset.messageId : '';
             }
             
             function scrollToBottom() {
@@ -235,26 +197,20 @@
             }
             
             function connectSSE() {
-                if (eventSource) {
-                    eventSource.close();
-                }
+                if (eventSource) eventSource.close();
                 
                 const lastMessageId = getLastMessageId();
                 const url = '/groups/' + groupId + '/sse' + (lastMessageId ? '?lastMessageId=' + lastMessageId : '');
                 
-                console.log('SSE: Connecting to group chat...', lastMessageId ? 'with last message: ' + lastMessageId : 'fresh connection');
                 updateStatus('Connecting...', 'text-yellow-500');
-                
                 eventSource = new EventSource(url);
                 
                 eventSource.addEventListener('connected', function(e) {
-                    console.log('SSE: Connected to group', e.data);
                     updateStatus('Connected', 'text-green-500');
                     reconnectAttempts = 0;
                 });
                 
                 eventSource.addEventListener('message', function(e) {
-                    console.log('SSE: Group message received');
                     messageList.insertAdjacentHTML('beforeend', e.data);
                     scrollToBottom();
                 });
@@ -264,24 +220,18 @@
                 });
                 
                 eventSource.onerror = function(e) {
-                    console.error('SSE: Connection error', e);
                     updateStatus('Reconnecting...', 'text-yellow-500');
-                    
                     eventSource.close();
                     
                     if (reconnectAttempts < maxReconnectAttempts) {
                         reconnectAttempts++;
-                        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-                        console.log(`SSE: Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
-                        setTimeout(connectSSE, delay);
+                        setTimeout(connectSSE, Math.min(1000 * Math.pow(2, reconnectAttempts), 30000));
                     } else {
                         updateStatus('Disconnected', 'text-red-500');
-                        console.error('SSE: Max reconnection attempts reached');
                     }
                 };
             }
             
-            // Handle form submission
             form.addEventListener('htmx:afterRequest', function(evt) {
                 if (evt.detail.successful) {
                     form.reset();
@@ -289,18 +239,32 @@
                 }
             });
             
-            // Initialize
             scrollToBottom();
             connectSSE();
             
-            // Cleanup on page unload
+            // Load members
+            fetch('/groups/' + groupId + '/members')
+                .then(r => r.text())
+                .then(html => {
+                    document.getElementById('members-list').innerHTML = html;
+                });
+            
             window.addEventListener('beforeunload', function() {
-                if (eventSource) {
-                    eventSource.close();
-                }
+                if (eventSource) eventSource.close();
             });
         })();
+        
+        function openGroupManageModal() {
+            document.getElementById('group-manage-modal').classList.remove('hidden');
+        }
+        
+        function closeGroupManageModal() {
+            document.getElementById('group-manage-modal').classList.add('hidden');
+        }
+        
+        // Close modal on backdrop click
+        document.getElementById('group-manage-modal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeGroupManageModal();
+        });
     </script>
-
-</body>
-</html>
+</article>

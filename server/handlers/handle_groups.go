@@ -4,6 +4,7 @@ import (
 	"context"
 	"exc6/apperrors"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"exc6/services/chat"
 	"exc6/services/groups"
 	"time"
@@ -11,34 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// HandleCreateGroup creates a new group
-func HandleCreateGroup(gsrv *groups.GroupService) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		username, err := getUsernameFromContext(c)
-		if err != nil {
-			return handleUnauthorized(c)
-		}
-
-		name := c.FormValue("name")
-		description := c.FormValue("description")
-		icon := c.FormValue("icon", "gradient-blue")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		group, err := gsrv.CreateGroup(ctx, username, name, description, icon)
-		if err != nil {
-			return err
-		}
-
-		// Return success message
-		return c.Render("partials/group-created", fiber.Map{
-			"Group": group,
-		})
-	}
-}
-
-// HandleGetGroups returns user's groups
+// HandleGetGroups renders the groups page
 func HandleGetGroups(gsrv *groups.GroupService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
@@ -49,20 +23,74 @@ func HandleGetGroups(gsrv *groups.GroupService) fiber.Handler {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		groups, err := gsrv.GetUserGroups(ctx, username)
+		groupsList, err := gsrv.GetUserGroups(ctx, username)
 		if err != nil {
 			return err
 		}
 
 		return c.Render("groups", fiber.Map{
 			"Username": username,
-			"Groups":   groups,
+			"Groups":   groupsList,
 		})
 	}
 }
 
-// HandleLoadGroupChat loads a group chat window
-func HandleLoadGroupChat(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
+// HandleSendGroupMessage sends a message to a group
+func HandleSendGroupMessage(csrv *chat.ChatService, gsrv *groups.GroupService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username, err := getUsernameFromContext(c)
+		if err != nil {
+			return handleUnauthorized(c)
+		}
+
+		groupID := c.Params("groupId")
+		content := c.FormValue("content")
+
+		if content == "" {
+			return apperrors.NewBadRequest("Message content required")
+		}
+
+		if groupID == "" {
+			return apperrors.NewBadRequest("Group ID required")
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		// Verify user is member
+		_, err = gsrv.GetGroupInfo(ctx, groupID, username)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"username": username,
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Error("User not authorized to send message to group")
+			return err
+		}
+
+		// Send message
+		_, err = csrv.SendGroupMessage(ctx, username, groupID, content)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"username": username,
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Error("Failed to send group message")
+			return apperrors.NewInternalError("Failed to send message").WithInternal(err)
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"group_id": groupID,
+		}).Debug("Group message sent successfully")
+
+		// Return 200 OK - SSE will handle displaying the message
+		return c.SendStatus(fiber.StatusOK)
+	}
+}
+
+// HandleLoadGroupChatIntegrated loads a group chat window (integrated with dashboard)
+func HandleLoadGroupChatIntegrated(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -86,14 +114,8 @@ func HandleLoadGroupChat(csrv *chat.ChatService, gsrv *groups.GroupService, qdb 
 		// Get message history
 		history, err := csrv.GetGroupHistory(ctx, groupID)
 		if err != nil {
+			logger.WithError(err).Warn("Failed to fetch group history")
 			history = []*chat.ChatMessage{}
-		}
-
-		// Get current user info for icon
-		user, _ := qdb.GetUserByUsername(ctx, username)
-		userIcon := ""
-		if user.Icon.Valid {
-			userIcon = user.Icon.String
 		}
 
 		// Get CSRF token
@@ -104,9 +126,15 @@ func HandleLoadGroupChat(csrv *chat.ChatService, gsrv *groups.GroupService, qdb 
 			}
 		}
 
+		logger.WithFields(map[string]interface{}{
+			"username":      username,
+			"group_id":      groupID,
+			"history_count": len(history),
+		}).Debug("Loading group chat")
+
+		// Render the integrated group chat partial
 		return c.Render("partials/group-chat-window", fiber.Map{
 			"Username":  username,
-			"UserIcon":  userIcon,
 			"Group":     groupInfo,
 			"Messages":  history,
 			"CSRFToken": csrfToken,
@@ -114,42 +142,8 @@ func HandleLoadGroupChat(csrv *chat.ChatService, gsrv *groups.GroupService, qdb 
 	}
 }
 
-// HandleSendGroupMessage sends a message to a group
-func HandleSendGroupMessage(csrv *chat.ChatService, gsrv *groups.GroupService) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		username, err := getUsernameFromContext(c)
-		if err != nil {
-			return handleUnauthorized(c)
-		}
-
-		groupID := c.Params("groupId")
-		content := c.FormValue("content")
-
-		if content == "" {
-			return apperrors.NewBadRequest("Message content required")
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-
-		// Verify user is member
-		_, err = gsrv.GetGroupInfo(ctx, groupID, username)
-		if err != nil {
-			return err
-		}
-
-		// Send message
-		_, err = csrv.SendGroupMessage(ctx, username, groupID, content)
-		if err != nil {
-			return apperrors.NewInternalError("Failed to send message").WithInternal(err)
-		}
-
-		return c.SendStatus(fiber.StatusOK)
-	}
-}
-
-// HandleGroupMembers shows group members
-func HandleGroupMembers(gsrv *groups.GroupService) fiber.Handler {
+// HandleGroupMembersPartial returns the members list partial
+func HandleGroupMembersPartial(gsrv *groups.GroupService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -171,15 +165,15 @@ func HandleGroupMembers(gsrv *groups.GroupService) fiber.Handler {
 			return err
 		}
 
-		return c.Render("partials/group-members", fiber.Map{
+		return c.Render("partials/group-members-list", fiber.Map{
 			"Group":   groupInfo,
 			"Members": members,
 		})
 	}
 }
 
-// HandleAddGroupMember adds a member to the group
-func HandleAddGroupMember(gsrv *groups.GroupService) fiber.Handler {
+// HandleAddGroupMemberPartial adds a member and returns updated members list
+func HandleAddGroupMemberPartial(gsrv *groups.GroupService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -197,6 +191,12 @@ func HandleAddGroupMember(gsrv *groups.GroupService) fiber.Handler {
 			return err
 		}
 
+		logger.WithFields(map[string]interface{}{
+			"username":   username,
+			"group_id":   groupID,
+			"new_member": newMemberUsername,
+		}).Info("Member added to group")
+
 		// Return updated member list
 		members, err := gsrv.GetGroupMembers(ctx, groupID, username)
 		if err != nil {
@@ -205,15 +205,15 @@ func HandleAddGroupMember(gsrv *groups.GroupService) fiber.Handler {
 
 		groupInfo, _ := gsrv.GetGroupInfo(ctx, groupID, username)
 
-		return c.Render("partials/group-members", fiber.Map{
+		return c.Render("partials/group-members-list", fiber.Map{
 			"Group":   groupInfo,
 			"Members": members,
 		})
 	}
 }
 
-// HandleRemoveGroupMember removes a member from the group
-func HandleRemoveGroupMember(gsrv *groups.GroupService) fiber.Handler {
+// HandleRemoveGroupMemberPartial removes a member and returns updated list
+func HandleRemoveGroupMemberPartial(gsrv *groups.GroupService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -231,9 +231,15 @@ func HandleRemoveGroupMember(gsrv *groups.GroupService) fiber.Handler {
 			return err
 		}
 
-		// If user removed themselves, redirect to groups
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"group_id": groupID,
+			"removed":  targetUsername,
+		}).Info("Member removed from group")
+
+		// If user removed themselves, redirect to dashboard
 		if targetUsername == username {
-			c.Set("HX-Redirect", "/groups")
+			c.Set("HX-Redirect", "/dashboard")
 			return c.SendStatus(fiber.StatusOK)
 		}
 
@@ -245,15 +251,54 @@ func HandleRemoveGroupMember(gsrv *groups.GroupService) fiber.Handler {
 
 		groupInfo, _ := gsrv.GetGroupInfo(ctx, groupID, username)
 
-		return c.Render("partials/group-members", fiber.Map{
+		return c.Render("partials/group-members-list", fiber.Map{
 			"Group":   groupInfo,
 			"Members": members,
 		})
 	}
 }
 
-// HandleDeleteGroup deletes a group
-func HandleDeleteGroup(gsrv *groups.GroupService) fiber.Handler {
+// HandleCreateGroupFromDashboard creates a group and returns success message
+func HandleCreateGroupFromDashboard(gsrv *groups.GroupService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username, err := getUsernameFromContext(c)
+		if err != nil {
+			return handleUnauthorized(c)
+		}
+
+		name := c.FormValue("name")
+		description := c.FormValue("description")
+		icon := c.FormValue("icon")
+		if icon == "" {
+			icon = "gradient-blue"
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		group, err := gsrv.CreateGroup(ctx, username, name, description, icon)
+		if err != nil {
+			return err
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"username":   username,
+			"group_id":   group.ID,
+			"group_name": group.Name,
+		}).Info("Group created")
+
+		// Return success message that will trigger page reload
+		return c.SendString(`
+			<div class="bg-green-500/10 border border-green-500/30 text-green-400 p-4 rounded-xl text-center">
+				<p class="font-semibold mb-2">Group Created!</p>
+				<p class="text-sm">` + group.Name + ` has been created successfully.</p>
+			</div>
+		`)
+	}
+}
+
+// HandleDeleteGroupFromChat deletes group and redirects to dashboard
+func HandleDeleteGroupFromChat(gsrv *groups.GroupService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -270,7 +315,12 @@ func HandleDeleteGroup(gsrv *groups.GroupService) fiber.Handler {
 			return err
 		}
 
-		c.Set("HX-Redirect", "/groups")
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"group_id": groupID,
+		}).Info("Group deleted")
+
+		c.Set("HX-Redirect", "/dashboard")
 		return c.SendStatus(fiber.StatusOK)
 	}
 }

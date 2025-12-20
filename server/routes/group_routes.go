@@ -11,18 +11,22 @@ import (
 
 // RegisterGroupRoutes sets up group-related endpoints
 func RegisterGroupRoutes(router fiber.Router, qdb *db.Queries, csrv *chat.ChatService, gsrv *groups.GroupService) {
-	// Group list and management
-	router.Get("/groups", handlers.HandleGetGroups(gsrv))
-	router.Post("/groups/create", handlers.HandleCreateGroup(gsrv))
-	router.Delete("/groups/:groupId", handlers.HandleDeleteGroup(gsrv))
+	// Group creation from dashboard
+	router.Post("/groups/create", handlers.HandleCreateGroupFromDashboard(gsrv))
 
-	// Group chat
-	router.Get("/groups/:groupId/chat", handlers.HandleLoadGroupChat(csrv, gsrv, qdb))
+	// Group chat (integrated with dashboard)
+	router.Get("/groups/:groupId/chat", handlers.HandleLoadGroupChatIntegrated(csrv, gsrv, qdb))
 	router.Post("/groups/:groupId/send", handlers.HandleSendGroupMessage(csrv, gsrv))
 	router.Get("/groups/:groupId/sse", handlers.HandleGroupSSE(csrv, gsrv, qdb))
 
-	// Group members
-	router.Get("/groups/:groupId/members", handlers.HandleGroupMembers(gsrv))
-	router.Post("/groups/:groupId/members", handlers.HandleAddGroupMember(gsrv))
-	router.Delete("/groups/:groupId/members/:username", handlers.HandleRemoveGroupMember(gsrv))
+	// Group members management
+	router.Get("/groups/:groupId/members", handlers.HandleGroupMembersPartial(gsrv))
+	router.Post("/groups/:groupId/members", handlers.HandleAddGroupMemberPartial(gsrv))
+	router.Delete("/groups/:groupId/members/:username", handlers.HandleRemoveGroupMemberPartial(gsrv))
+
+	// Group deletion
+	router.Delete("/groups/:groupId", handlers.HandleDeleteGroupFromChat(gsrv))
+
+	// Legacy: Keep the old groups page for backwards compatibility
+	router.Get("/groups", handlers.HandleGetGroups(gsrv))
 }
