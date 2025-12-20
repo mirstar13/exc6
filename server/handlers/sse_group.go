@@ -42,11 +42,9 @@ func HandleGroupSSE(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Q
 			return c.Status(fiber.StatusForbidden).SendString("Not a member of this group")
 		}
 
-		// Create copies to avoid corruption
 		usernameCopy := string([]byte(username))
 		groupIDCopy := string([]byte(groupID))
 
-		// Set headers for SSE
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
@@ -60,7 +58,6 @@ func HandleGroupSSE(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Q
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			// Subscribe to group messages
 			pubsub := csrv.SubscribeToGroup(ctx, groupID)
 			defer pubsub.Close()
 
@@ -71,10 +68,8 @@ func HandleGroupSSE(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Q
 				"group_id": groupID,
 			}).Info("Group SSE connection established")
 
-			// Send connection established event
 			sendSSE(w, "connected", `{"status":"connected"}`)
 
-			// If reconnecting, send any missed messages
 			if lastMessageID != "" {
 				logger.WithFields(map[string]interface{}{
 					"username":        username,
@@ -84,7 +79,6 @@ func HandleGroupSSE(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Q
 				sendMissedGroupMessages(w, csrv, groupID, lastMessageID, username, qdb)
 			}
 
-			// Keep-alive ticker
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
 
@@ -112,8 +106,7 @@ func HandleGroupSSE(csrv *chat.ChatService, gsrv *groups.GroupService, qdb *db.Q
 						"message_id": chatMsg.MessageID,
 					}).Debug("Broadcasting group message via SSE")
 
-					// Render message with sender info
-					html := renderGroupMessageHTML(chatMsg, username, qdb)
+					html := renderCompactGroupMessageHTML(chatMsg, username, qdb)
 					if !sendSSE(w, "message", html) {
 						logger.WithFields(map[string]interface{}{
 							"username": username,
@@ -164,7 +157,7 @@ func sendMissedGroupMessages(w *bufio.Writer, cs *chat.ChatService, groupID, las
 		}
 
 		if foundLast {
-			html := renderGroupMessageHTML(*msg, currentUser, qdb)
+			html := renderCompactGroupMessageHTML(*msg, currentUser, qdb)
 			if sendSSE(w, "message", html) {
 				missedCount++
 			} else {
@@ -181,68 +174,101 @@ func sendMissedGroupMessages(w *bufio.Writer, cs *chat.ChatService, groupID, las
 	}
 }
 
-func renderGroupMessageHTML(msg chat.ChatMessage, currentUser string, qdb *db.Queries) string {
+// renderCompactGroupMessageHTML generates HTML for messages with proper spacing hints
+func renderCompactGroupMessageHTML(msg chat.ChatMessage, currentUser string, qdb *db.Queries) string {
 	isMe := msg.FromID == currentUser
-
-	// Escape HTML in content
 	content := escapeHTML(msg.Content)
+	timestamp := formatTimestamp(msg.Timestamp)
 
-	// Build HTML
 	var html strings.Builder
 
 	if isMe {
-		// My message - right aligned, no sender info
-		html.WriteString(fmt.Sprintf(`<div class="flex w-full justify-end group" data-message-id="%s">`, msg.MessageID))
+		// My message - right aligned
+		html.WriteString(fmt.Sprintf(`<div class="flex w-full justify-end mt-3" data-message-id="%s" data-sender="%s">`,
+			msg.MessageID, msg.FromID))
 		html.WriteString(`<div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white rounded-2xl rounded-tr-sm" style="word-break: break-word; overflow-wrap: break-word;">`)
 		html.WriteString(content)
-		html.WriteString(`<div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">Now</div>`)
+		html.WriteString(fmt.Sprintf(`<div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">%s</div>`, timestamp))
 		html.WriteString(`</div></div>`)
 	} else {
-		// Other's message - left aligned with sender info
-		// Get sender info
+		// Get sender icon
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 
-		senderIcon := ""
+		iconClass := "bg-gradient-to-br from-blue-500 to-blue-700"
 		sender, err := qdb.GetUserByUsername(ctx, msg.FromID)
 		if err == nil && sender.Icon.Valid {
-			senderIcon = sender.Icon.String
+			iconClass = getIconClass(sender.Icon.String)
 		}
 
-		// Determine icon class
-		iconClass := "bg-gradient-to-br from-blue-500 to-blue-700"
-		if senderIcon != "" {
-			switch senderIcon {
-			case "gradient-purple":
-				iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"
-			case "gradient-green":
-				iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"
-			case "solid-signal":
-				iconClass = "bg-signal-blue"
-			}
-		}
+		// Other's message - left aligned with avatar and name
+		html.WriteString(fmt.Sprintf(`<div class="flex w-full justify-start mt-3" data-message-id="%s" data-sender="%s">`,
+			msg.MessageID, msg.FromID))
+		html.WriteString(`<div class="flex items-start gap-2 max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">`)
 
-		html.WriteString(fmt.Sprintf(`<div class="flex w-full justify-start group" data-message-id="%s">`, msg.MessageID))
-		html.WriteString(`<div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">`)
-		html.WriteString(`<div class="flex items-start gap-2">`)
-
-		// Avatar
+		// Avatar (show for first message in group)
 		html.WriteString(fmt.Sprintf(`<div class="w-8 h-8 rounded-full %s flex items-center justify-center text-white font-bold text-xs shrink-0">`, iconClass))
 		html.WriteString(string(msg.FromID[0]))
 		html.WriteString(`</div>`)
 
-		// Message content
+		// Message content with sender name
 		html.WriteString(`<div class="flex-1 min-w-0">`)
 		html.WriteString(fmt.Sprintf(`<div class="text-xs font-semibold text-signal-blue mb-0.5">%s</div>`, escapeHTML(msg.FromID)))
 		html.WriteString(`<div class="px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm" style="word-break: break-word; overflow-wrap: break-word;">`)
 		html.WriteString(content)
-		html.WriteString(`<div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">Now</div>`)
-		html.WriteString(`</div>`)
-		html.WriteString(`</div>`)
+		html.WriteString(fmt.Sprintf(`<div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">%s</div>`, timestamp))
+		html.WriteString(`</div></div>`)
 
-		html.WriteString(`</div>`)
 		html.WriteString(`</div></div>`)
 	}
 
 	return html.String()
+}
+
+func getIconClass(icon string) string {
+	iconClasses := map[string]string{
+		"gradient-blue":   "bg-gradient-to-br from-blue-500 to-blue-700",
+		"gradient-purple": "bg-gradient-to-br from-purple-500 to-pink-600",
+		"gradient-green":  "bg-gradient-to-br from-green-500 to-emerald-600",
+		"gradient-orange": "bg-gradient-to-br from-orange-500 to-red-600",
+		"gradient-cyan":   "bg-gradient-to-br from-cyan-500 to-blue-600",
+		"gradient-rose":   "bg-gradient-to-br from-rose-500 to-pink-600",
+		"gradient-indigo": "bg-gradient-to-br from-indigo-500 to-purple-600",
+		"gradient-amber":  "bg-gradient-to-br from-amber-500 to-orange-600",
+		"gradient-teal":   "bg-gradient-to-br from-teal-500 to-green-600",
+		"gradient-slate":  "bg-gradient-to-br from-slate-600 to-gray-700",
+		"solid-signal":    "bg-signal-blue",
+		"solid-dark":      "bg-signal-surface border border-white/10",
+		"solid-red":       "bg-red-600",
+		"solid-emerald":   "bg-emerald-600",
+		"solid-violet":    "bg-violet-600",
+	}
+
+	if class, ok := iconClasses[icon]; ok {
+		return class
+	}
+	return "bg-gradient-to-br from-blue-500 to-blue-700"
+}
+
+func formatTimestamp(timestamp int64) string {
+	if timestamp == 0 {
+		return "Now"
+	}
+
+	t := time.Unix(timestamp, 0)
+	now := time.Now()
+
+	// Today - show time
+	if t.Day() == now.Day() && t.Month() == now.Month() && t.Year() == now.Year() {
+		return t.Format("3:04 PM")
+	}
+
+	// Yesterday
+	yesterday := now.AddDate(0, 0, -1)
+	if t.Day() == yesterday.Day() && t.Month() == yesterday.Month() && t.Year() == yesterday.Year() {
+		return "Yesterday"
+	}
+
+	// Older - show date
+	return t.Format("Jan 2")
 }

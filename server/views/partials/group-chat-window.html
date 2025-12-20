@@ -1,12 +1,28 @@
-<article class="flex h-full w-full">
-    <!-- Group Info Sidebar -->
-    <aside class="w-[280px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5">
+<article class="flex h-full w-full relative">
+    <aside id="group-sidebar" class="w-[280px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 transition-all duration-300">
         <div class="p-4 border-b border-white/5">
             <div class="flex items-center gap-3 mb-4">
                 {{if .Group.CustomIcon}}
                 <img src="{{.Group.CustomIcon}}" class="w-12 h-12 rounded-full" alt="{{.Group.Name}}">
                 {{else}}
-                <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                {{$iconClass := "bg-gradient-to-br from-purple-500 to-blue-600"}}
+                {{if eq .Group.Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
+                {{if eq .Group.Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
+                {{if eq .Group.Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
+                {{if eq .Group.Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
+                {{if eq .Group.Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
+                {{if eq .Group.Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
+                {{if eq .Group.Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
+                {{if eq .Group.Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
+                
+                <div class="w-12 h-12 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg">
                     {{slice .Group.Name 0 1}}
                 </div>
                 {{end}}
@@ -43,6 +59,11 @@
         <!-- Header -->
         <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 shrink-0">
             <div class="flex items-center gap-3">
+                <button onclick="toggleSidebar()" class="p-2 hover:bg-signal-surface rounded-lg transition-colors">
+                    <svg class="w-5 h-5 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
                 <h1 class="text-lg font-semibold text-signal-text-main">{{.Group.Name}}</h1>
             </div>
             <div class="text-xs text-signal-text-sub" id="connection-status">Connected</div>
@@ -55,36 +76,47 @@
                     <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
                 </div>
                 
-                <div id="message-list" class="flex flex-col gap-2">
+                <div id="message-list" class="flex flex-col">
                     {{$me := .Username}}
-                    {{range .Messages}}
-                        {{if eq .FromID $me}}
+                    {{$prevSender := ""}}
+                    {{range $index, $msg := .Messages}}
+                        {{$isMe := eq $msg.FromID $me}}
+                        {{$showAvatar := ne $msg.FromID $prevSender}}
+                        
+                        {{if $isMe}}
                             <!-- My message -->
-                            <div class="flex w-full justify-end group" data-message-id="{{.MessageID}}">
-                                <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white rounded-2xl rounded-tr-sm" style="word-break: break-word; overflow-wrap: break-word;">
-                                    {{.Content}}
-                                    <div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">Now</div>
+                            <div class="flex w-full justify-end {{if $showAvatar}}mt-3{{else}}mt-0.5{{end}}" data-message-id="{{$msg.MessageID}}">
+                                <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white {{if $showAvatar}}rounded-2xl rounded-tr-sm{{else}}rounded-xl{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
+                                    {{$msg.Content}}
+                                    <div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">{{if eq $msg.Timestamp 0}}Now{{else}}{{formatTime $msg.Timestamp}}{{end}}</div>
                                 </div>
                             </div>
                         {{else}}
                             <!-- Other's message -->
-                            <div class="flex w-full justify-start group" data-message-id="{{.MessageID}}">
-                                <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">
-                                    <div class="flex items-start gap-2">
-                                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                                            {{slice .FromID 0 1}}
-                                        </div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="text-xs font-semibold text-signal-blue mb-0.5">{{.FromID}}</div>
-                                            <div class="px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm" style="word-break: break-word; overflow-wrap: break-word;">
-                                                {{.Content}}
-                                                <div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">Now</div>
-                                            </div>
+                            <div class="flex w-full justify-start {{if $showAvatar}}mt-3{{else}}mt-0.5{{end}}" data-message-id="{{$msg.MessageID}}">
+                                <div class="flex items-start gap-2 max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">
+                                    {{if $showAvatar}}
+                                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                        {{slice $msg.FromID 0 1}}
+                                    </div>
+                                    {{else}}
+                                    <div class="w-8 h-8 shrink-0"></div>
+                                    {{end}}
+                                    
+                                    <div class="flex-1 min-w-0">
+                                        {{if $showAvatar}}
+                                        <div class="text-xs font-semibold text-signal-blue mb-0.5">{{$msg.FromID}}</div>
+                                        {{end}}
+                                        <div class="px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-bubble text-signal-text-main {{if $showAvatar}}rounded-2xl rounded-tl-sm{{else}}rounded-xl{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
+                                            {{$msg.Content}}
+                                            <div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">{{if eq $msg.Timestamp 0}}Now{{else}}{{formatTime $msg.Timestamp}}{{end}}</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         {{end}}
+                        
+                        {{$prevSender = $msg.FromID}}
                     {{end}}
                 </div>
             </div>
@@ -124,7 +156,6 @@
                 </button>
             </div>
 
-            <!-- Add Member Form -->
             <div class="mb-6">
                 <h4 class="text-sm font-semibold text-signal-text-main mb-3">Add Member</h4>
                 <form hx-post="/groups/{{.Group.ID}}/members" 
@@ -139,7 +170,6 @@
                 </form>
             </div>
 
-            <!-- Members List in Modal -->
             <div>
                 <h4 class="text-sm font-semibold text-signal-text-main mb-3">Members</h4>
                 <div id="modal-members-list" 
@@ -152,7 +182,6 @@
             </div>
 
             {{if eq .Group.UserRole "admin"}}
-            <!-- Admin Actions -->
             <div class="mt-6 pt-6 border-t border-white/5">
                 <button hx-delete="/groups/{{.Group.ID}}" 
                         hx-confirm="Delete {{.Group.Name}}? This cannot be undone."
@@ -177,6 +206,7 @@
             let eventSource = null;
             let reconnectAttempts = 0;
             const maxReconnectAttempts = 10;
+            let lastSender = null;
             
             function getLastMessageId() {
                 const messages = messageList.querySelectorAll('[data-message-id]');
@@ -195,6 +225,24 @@
                     statusEl.className = 'text-xs ' + color;
                 }
             }
+
+            function formatMessageHTML(html, sender) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                const messageDiv = tempDiv.firstElementChild;
+                
+                // Determine spacing based on sender
+                if (sender === lastSender) {
+                    messageDiv.classList.remove('mt-3');
+                    messageDiv.classList.add('mt-0.5');
+                } else {
+                    messageDiv.classList.remove('mt-0.5');
+                    messageDiv.classList.add('mt-3');
+                }
+                
+                lastSender = sender;
+                return messageDiv.outerHTML;
+            }
             
             function connectSSE() {
                 if (eventSource) eventSource.close();
@@ -211,7 +259,24 @@
                 });
                 
                 eventSource.addEventListener('message', function(e) {
-                    messageList.insertAdjacentHTML('beforeend', e.data);
+                    // Extract sender from message HTML to determine spacing
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = e.data;
+                    const messageDiv = tempDiv.firstElementChild;
+                    
+                    // Check if it's from current user or extract sender
+                    const isMyMessage = messageDiv.classList.contains('justify-end');
+                    let sender;
+                    
+                    if (isMyMessage) {
+                        sender = username;
+                    } else {
+                        const senderEl = messageDiv.querySelector('.text-signal-blue');
+                        sender = senderEl ? senderEl.textContent : 'unknown';
+                    }
+                    
+                    const formattedHTML = formatMessageHTML(e.data, sender);
+                    messageList.insertAdjacentHTML('beforeend', formattedHTML);
                     scrollToBottom();
                 });
                 
@@ -239,6 +304,20 @@
                 }
             });
             
+            // Initialize last sender from existing messages
+            const messages = messageList.querySelectorAll('[data-message-id]');
+            if (messages.length > 0) {
+                const lastMessage = messages[messages.length - 1];
+                const isMyMessage = lastMessage.classList.contains('justify-end');
+                
+                if (isMyMessage) {
+                    lastSender = username;
+                } else {
+                    const senderEl = lastMessage.querySelector('.text-signal-blue');
+                    lastSender = senderEl ? senderEl.textContent : null;
+                }
+            }
+            
             scrollToBottom();
             connectSSE();
             
@@ -254,6 +333,17 @@
             });
         })();
         
+        function toggleSidebar() {
+            const sidebar = document.getElementById('group-sidebar');
+            if (sidebar.classList.contains('w-[280px]')) {
+                sidebar.classList.remove('w-[280px]');
+                sidebar.classList.add('w-0', 'overflow-hidden');
+            } else {
+                sidebar.classList.remove('w-0', 'overflow-hidden');
+                sidebar.classList.add('w-[280px]');
+            }
+        }
+        
         function openGroupManageModal() {
             document.getElementById('group-manage-modal').classList.remove('hidden');
         }
@@ -262,7 +352,6 @@
             document.getElementById('group-manage-modal').classList.add('hidden');
         }
         
-        // Close modal on backdrop click
         document.getElementById('group-manage-modal')?.addEventListener('click', function(e) {
             if (e.target === this) closeGroupManageModal();
         });

@@ -162,11 +162,8 @@ func sendMissedMessages(w *bufio.Writer, cs *chat.ChatService, username, targetC
 // Keep both in sync when making styling changes
 func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 	isMe := msg.FromID == currentUser
-
-	// Build message data
 	data := buildMessageData(msg, currentUser, isMe)
 
-	// Render HTML using string builder for better performance
 	var html strings.Builder
 	html.WriteString(`<div class="flex w-full mb-1 group `)
 	html.WriteString(data.JustifyClass)
@@ -178,7 +175,9 @@ func renderMessageHTML(msg chat.ChatMessage, currentUser string) string {
 	html.WriteString(data.EscapedContent)
 	html.WriteString(`<div class="text-[10px] opacity-60 text-right mt-1 select-none `)
 	html.WriteString(data.TimeClass)
-	html.WriteString(`">Now</div></div></div>`)
+	html.WriteString(`">`)
+	html.WriteString(data.Timestamp)
+	html.WriteString(`</div></div></div>`)
 
 	return html.String()
 }
@@ -189,13 +188,15 @@ type MessageData struct {
 	BubbleClass    string
 	TimeClass      string
 	EscapedContent string
+	Timestamp      string
 }
 
 // buildMessageData prepares styling classes based on message sender
 func buildMessageData(msg chat.ChatMessage, currentUser string, isMe bool) MessageData {
-	_ = currentUser // currently unused, but may be needed for future enhancements
+	_ = currentUser
 	data := MessageData{
 		EscapedContent: escapeHTML(msg.Content),
+		Timestamp:      formatTimestamp(msg.Timestamp),
 	}
 
 	if isMe {
