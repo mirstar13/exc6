@@ -1,28 +1,13 @@
 <article class="flex h-full w-full relative">
-    <aside id="group-sidebar" class="w-[280px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 transition-all duration-300">
+    <input type="checkbox" id="group-info-toggle" class="hidden peer" autocomplete="off">
+
+    <aside id="group-sidebar" class="w-0 overflow-hidden peer-checked:w-[280px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 transition-all duration-300">
         <div class="p-4 border-b border-white/5">
             <div class="flex items-center gap-3 mb-4">
                 {{if .Group.CustomIcon}}
                 <img src="{{.Group.CustomIcon}}" class="w-12 h-12 rounded-full" alt="{{.Group.Name}}">
                 {{else}}
-                {{$iconClass := "bg-gradient-to-br from-purple-500 to-blue-600"}}
-                {{if eq .Group.Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-                {{if eq .Group.Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
-                {{if eq .Group.Icon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
-                {{if eq .Group.Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-                {{if eq .Group.Icon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
-                {{if eq .Group.Icon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
-                {{if eq .Group.Icon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
-                {{if eq .Group.Icon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
-                
-                <div class="w-12 h-12 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg">
+                <div class="w-12 h-12 {{iconClass .Group.Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg">
                     {{slice .Group.Name 0 1}}
                 </div>
                 {{end}}
@@ -36,7 +21,6 @@
             {{end}}
         </div>
 
-        <!-- Members List -->
         <div class="flex-1 overflow-y-auto custom-scrollbar p-4">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-xs font-semibold text-signal-text-sub uppercase">Members</h4>
@@ -49,27 +33,23 @@
                 </button>
             </div>
             <div id="members-list" class="space-y-2">
-                <!-- Members will be loaded here -->
-            </div>
+                </div>
         </div>
     </aside>
 
-    <!-- Chat Area -->
     <div class="flex-1 flex flex-col bg-signal-bg h-full">
-        <!-- Header -->
         <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 shrink-0">
             <div class="flex items-center gap-3">
-                <button onclick="toggleSidebar()" class="p-2 hover:bg-signal-surface rounded-lg transition-colors">
+                <label for="group-info-toggle" class="p-2 hover:bg-signal-surface rounded-lg transition-colors cursor-pointer select-none">
                     <svg class="w-5 h-5 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                     </svg>
-                </button>
+                </label>
                 <h1 class="text-lg font-semibold text-signal-text-main">{{.Group.Name}}</h1>
             </div>
             <div class="text-xs text-signal-text-sub" id="connection-status">Connected</div>
         </header>
 
-        <!-- Messages -->
         <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
             <div class="flex flex-col justify-end min-h-full">
                 <div class="text-center mb-4 shrink-0">
@@ -84,7 +64,6 @@
                         {{$showAvatar := ne $msg.FromID $prevSender}}
                         
                         {{if $isMe}}
-                            <!-- My message -->
                             <div class="flex w-full justify-end {{if $showAvatar}}mt-3{{else}}mt-0.5{{end}}" data-message-id="{{$msg.MessageID}}">
                                 <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white {{if $showAvatar}}rounded-2xl rounded-tr-sm{{else}}rounded-xl{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
                                     {{$msg.Content}}
@@ -92,7 +71,6 @@
                                 </div>
                             </div>
                         {{else}}
-                            <!-- Other's message -->
                             <div class="flex w-full justify-start {{if $showAvatar}}mt-3{{else}}mt-0.5{{end}}" data-message-id="{{$msg.MessageID}}">
                                 <div class="flex items-start gap-2 max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">
                                     {{if $showAvatar}}
@@ -122,7 +100,6 @@
             </div>
         </div>
 
-        <!-- Message Input -->
         <footer class="p-4 bg-signal-bg shrink-0">
             <form id="chat-form" hx-post="/groups/{{.Group.ID}}/send" hx-trigger="submit" hx-swap="none" class="flex items-end gap-2">
                 {{if .CSRFToken}}
@@ -144,7 +121,6 @@
         </footer>
     </div>
 
-    <!-- Group Management Modal -->
     <div id="group-manage-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div class="bg-signal-surface rounded-2xl p-6 max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
             <div class="flex items-center justify-between mb-6">
@@ -332,17 +308,6 @@
                 if (eventSource) eventSource.close();
             });
         })();
-        
-        function toggleSidebar() {
-            const sidebar = document.getElementById('group-sidebar');
-            if (sidebar.classList.contains('w-[280px]')) {
-                sidebar.classList.remove('w-[280px]');
-                sidebar.classList.add('w-0', 'overflow-hidden');
-            } else {
-                sidebar.classList.remove('w-0', 'overflow-hidden');
-                sidebar.classList.add('w-[280px]');
-            }
-        }
         
         function openGroupManageModal() {
             document.getElementById('group-manage-modal').classList.remove('hidden');

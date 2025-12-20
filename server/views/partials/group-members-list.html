@@ -2,11 +2,11 @@
 <div class="bg-signal-surface/50 rounded-lg p-3 flex items-center justify-between group hover:bg-signal-surface transition-colors">
     <div class="flex items-center gap-3 flex-1 min-w-0">
         {{if .CustomIcon}}
-        <img src="{{.CustomIcon}}" class="w-8 h-8 rounded-full" alt="{{.Username}}">
+            <img src="{{.CustomIcon}}" class="w-8 h-8 rounded-full" alt="{{.Username}}">
         {{else}}
-        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-xs">
-            {{slice .Username 0 1}}
-        </div>
+            <div class="w-8 h-8 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-xs">
+                {{slice .Username 0 1}}
+            </div>
         {{end}}
         <div class="flex-1 min-w-0">
             <div class="font-medium text-signal-text-main truncate text-sm">{{.Username}}</div>

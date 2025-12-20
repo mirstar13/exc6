@@ -1,5 +1,4 @@
 <article class="flex flex-col h-full w-full relative bg-signal-bg">
-    
     <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 sticky top-0 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
             {{if .ContactCustomIcon}}
@@ -7,24 +6,7 @@
                     <img src="{{.ContactCustomIcon}}" alt="{{.Other}}" class="w-full h-full object-cover">
                 </div>
             {{else}}
-                {{$iconClass := "bg-gradient-to-br from-purple-600 to-blue-600"}}
-                {{if eq .ContactIcon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-                {{if eq .ContactIcon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-orange"}}{{$iconClass = "bg-gradient-to-br from-orange-500 to-red-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-cyan"}}{{$iconClass = "bg-gradient-to-br from-cyan-500 to-blue-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-rose"}}{{$iconClass = "bg-gradient-to-br from-rose-500 to-pink-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-indigo"}}{{$iconClass = "bg-gradient-to-br from-indigo-500 to-purple-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-amber"}}{{$iconClass = "bg-gradient-to-br from-amber-500 to-orange-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-teal"}}{{$iconClass = "bg-gradient-to-br from-teal-500 to-green-600"}}{{end}}
-                {{if eq .ContactIcon "gradient-slate"}}{{$iconClass = "bg-gradient-to-br from-slate-600 to-gray-700"}}{{end}}
-                {{if eq .ContactIcon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-                {{if eq .ContactIcon "solid-dark"}}{{$iconClass = "bg-signal-surface border border-white/10"}}{{end}}
-                {{if eq .ContactIcon "solid-red"}}{{$iconClass = "bg-red-600"}}{{end}}
-                {{if eq .ContactIcon "solid-emerald"}}{{$iconClass = "bg-emerald-600"}}{{end}}
-                {{if eq .ContactIcon "solid-violet"}}{{$iconClass = "bg-violet-600"}}{{end}}
-                
-                <div class="w-10 h-10 {{$iconClass}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
+                <div class="w-10 h-10 {{iconClass .ContactIcon}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
                     {{slice .Other 0 1}}
                 </div>
             {{end}}

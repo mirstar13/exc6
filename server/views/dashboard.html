@@ -13,6 +13,16 @@
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
+            safelist: [
+                'bg-gradient-to-br',
+                'from-blue-500', 'from-purple-500', 'from-green-500', 'from-orange-500', 
+                'from-cyan-500', 'from-rose-500', 'from-indigo-500', 'from-amber-500', 
+                'from-teal-500', 'from-slate-600',
+                'to-blue-700', 'to-pink-600', 'to-emerald-600', 'to-red-600', 
+                'to-blue-600', 'to-purple-600', 'to-orange-600', 'to-green-600', 
+                'to-gray-700',
+                'bg-red-600', 'bg-emerald-600', 'bg-violet-600', 'bg-signal-blue'
+            ],
             theme: {
                 extend: {
                     fontFamily: {
@@ -40,8 +50,51 @@
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #4a4a4a; }
         .custom-scrollbar { scrollbar-width: thin; scrollbar-color: #333 transparent; }
+        
         .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
         .htmx-request .htmx-indicator { opacity: 1; }
+
+        /* --- Sidebar Collapse Logic --- */
+        #sidebar { transition: width 0.3s ease; }
+        
+        /* Collapsed State Width */
+        #sidebar.collapsed { width: 80px !important; }
+
+        /* When collapsed, stack the header vertically to fit all icons */
+        #sidebar.collapsed .sidebar-header {
+            flex-direction: column;
+            height: auto;
+            padding-top: 1.5rem;
+            padding-bottom: 1rem;
+            gap: 1.5rem;
+        }
+        
+        #sidebar.collapsed .header-actions {
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* Hide text elements */
+        #sidebar.collapsed .sidebar-text { 
+            display: none; 
+            opacity: 0;
+        }
+
+        /* Adjust Search Bar */
+        #sidebar.collapsed .search-input { display: none; }
+        #sidebar.collapsed .search-wrapper { 
+            background-color: transparent; 
+            padding: 0;
+            justify-content: center; 
+        }
+
+        /* Center the contact list items */
+        #sidebar.collapsed .contact-item {
+            justify-content: center;
+        }
+        
+        /* Rotate the toggle arrow */
+        #sidebar.collapsed .toggle-arrow { transform: rotate(180deg); }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -49,28 +102,22 @@
 
     <div class="flex h-full w-full">
         
-        <!-- Sidebar -->
-        <aside class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20">
-            <div class="h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5">
-                <a href="/profile" class="group flex items-center gap-3 cursor-pointer">
+        <aside id="sidebar" class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20 relative">
+            
+            <div class="sidebar-header h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5 transition-all">
+                <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
                     {{if .CustomIcon}}
                         <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
                             <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
                         </div>
                     {{else}}
-                        {{$iconClass := "bg-signal-surface"}}
-                        {{if eq .Icon "gradient-blue"}}{{$iconClass = "bg-gradient-to-br from-blue-500 to-blue-700"}}{{end}}
-                        {{if eq .Icon "gradient-purple"}}{{$iconClass = "bg-gradient-to-br from-purple-500 to-pink-600"}}{{end}}
-                        {{if eq .Icon "gradient-green"}}{{$iconClass = "bg-gradient-to-br from-green-500 to-emerald-600"}}{{end}}
-                        {{if eq .Icon "solid-signal"}}{{$iconClass = "bg-signal-blue"}}{{end}}
-                        
-                        <div class="w-9 h-9 {{$iconClass}} rounded-full flex items-center justify-center text-sm font-bold text-white group-hover:scale-105 transition-transform ring-1 ring-white/5">
+                        <div class="w-9 h-9 {{iconClass .Icon}} rounded-full flex items-center justify-center text-sm font-bold text-white group-hover:scale-105 transition-transform ring-1 ring-white/5">
                             {{slice .Username 0 1}}
                         </div>
                     {{end}}
                 </a>
                 
-                <div class="flex gap-2">
+                <div class="header-actions flex gap-2 transition-all">
                     <a href="/friends" title="Friends"
                        class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all group relative">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,34 +145,32 @@
             </div>
 
             <div class="p-3 shrink-0">
-                <div class="bg-signal-surface rounded-lg px-3 py-1.5 flex items-center gap-2">
-                    <svg class="w-4 h-4 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                    <input type="text" placeholder="Search" class="bg-transparent border-none outline-none text-sm text-signal-text-main placeholder-signal-text-sub w-full focus:ring-0">
+                <div class="search-wrapper bg-signal-surface rounded-lg px-3 py-1.5 flex items-center gap-2 transition-all">
+                    <svg class="w-4 h-4 text-signal-text-sub shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" placeholder="Search" class="search-input bg-transparent border-none outline-none text-sm text-signal-text-main placeholder-signal-text-sub w-full focus:ring-0">
                 </div>
             </div>
 
-            <!-- Contacts List (Friends + Groups) - Fixed Icon Rendering -->
             <div class="flex-1 overflow-y-auto custom-scrollbar">
                 {{range .Contacts}}
                     <div class="px-2">
                         {{if .IsGroup}}
-                            <!-- Group Item -->
-                            <div class="px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
+                            <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
                                  hx-get="/groups/{{.GroupID}}/chat"
                                  hx-target="#main-chat-area" 
                                  hx-swap="innerHTML">
-                                
+                    
                                 {{if .CustomIcon}}
                                     <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5">
                                         <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
                                     </div>
                                 {{else}}
-                                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg" style="{{iconStyle .Icon}}">
+                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
                                         {{slice .Username 0 1}}
                                     </div>
                                 {{end}}
                                 
-                                <div class="flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
+                                <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
                                         <div class="flex items-center gap-2">
                                             <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
@@ -139,23 +184,22 @@
                                 </div>
                             </div>
                         {{else}}
-                            <!-- Friend Item -->
-                            <div class="px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
+                            <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
                                  hx-get="/chat/{{.Username}}"
                                  hx-target="#main-chat-area" 
                                  hx-swap="innerHTML">
-                                
+                        
                                 {{if .CustomIcon}}
                                     <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5">
                                         <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
                                     </div>
                                 {{else}}
-                                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg" style="{{iconStyle .Icon}}">
+                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
                                         {{slice .Username 0 1}}
                                     </div>
                                 {{end}}
                                 
-                                <div class="flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
+                                <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
                                         <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
                                         <span class="text-xs text-signal-text-sub">Now</span>
@@ -167,9 +211,16 @@
                     </div>
                 {{end}}
             </div>
+
+            <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
+                <button onclick="toggleSidebar()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-signal-surface text-signal-text-sub transition-all">
+                    <svg class="toggle-arrow w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
+                    </svg>
+                </button>
+            </div>
         </aside>
 
-        <!-- Main Chat Area -->
         <main id="main-chat-area" class="flex-1 bg-signal-bg h-full flex flex-col relative">
             <div class="h-full flex flex-col items-center justify-center text-signal-text-sub animate-fade-in">
                 <div class="w-24 h-24 bg-signal-surface rounded-full flex items-center justify-center mb-6">
@@ -181,7 +232,6 @@
         </main>
     </div>
 
-    <!-- Group Creation Modal -->
     <div id="group-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 animate-slide-up">
             <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
@@ -212,6 +262,10 @@
     </div>
 
     <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+        }
+
         function openGroupModal() {
             document.getElementById('group-modal').classList.remove('hidden');
         }

@@ -42,31 +42,7 @@ func addTemplateFunctions(engine *html.Engine) error {
 		return t.Format("Jan 2")
 	})
 
-	// Icon style helper - returns inline style for background
-	engine.AddFunc("iconStyle", func(icon string) string {
-		styles := map[string]string{
-			"gradient-blue":   "background: linear-gradient(to bottom right, #3b82f6, #1d4ed8)",
-			"gradient-purple": "background: linear-gradient(to bottom right, #a855f7, #ec4899)",
-			"gradient-green":  "background: linear-gradient(to bottom right, #22c55e, #059669)",
-			"gradient-orange": "background: linear-gradient(to bottom right, #f97316, #dc2626)",
-			"gradient-cyan":   "background: linear-gradient(to bottom right, #06b6d4, #2563eb)",
-			"gradient-rose":   "background: linear-gradient(to bottom right, #f43f5e, #ec4899)",
-			"gradient-indigo": "background: linear-gradient(to bottom right, #6366f1, #9333ea)",
-			"gradient-amber":  "background: linear-gradient(to bottom right, #f59e0b, #f97316)",
-			"gradient-teal":   "background: linear-gradient(to bottom right, #14b8a6, #059669)",
-			"gradient-slate":  "background: linear-gradient(to bottom right, #475569, #374151)",
-			"solid-signal":    "background: #2C6BED",
-			"solid-dark":      "background: #2C2C2C; border: 1px solid rgba(255,255,255,0.1)",
-			"solid-red":       "background: #dc2626",
-			"solid-emerald":   "background: #059669",
-			"solid-violet":    "background: #7c3aed",
-		}
-
-		if style, ok := styles[icon]; ok {
-			return style
-		}
-		return "background: linear-gradient(to bottom right, #3b82f6, #1d4ed8)" // Default blue gradient
-	})
+	engine.AddFunc("iconClass", GetIconClass)
 
 	// String truncation helper
 	engine.AddFunc("truncate", func(s string, length int) string {
@@ -101,4 +77,31 @@ func addTemplateFunctions(engine *html.Engine) error {
 	})
 
 	return nil
+}
+
+func GetIconClass(icon string) string {
+	iconClasses := map[string]string{
+		"gradient-blue":   "bg-gradient-to-br from-blue-500 to-blue-700",
+		"gradient-purple": "bg-gradient-to-br from-purple-500 to-pink-600",
+		"gradient-green":  "bg-gradient-to-br from-green-500 to-emerald-600",
+		"gradient-orange": "bg-gradient-to-br from-orange-500 to-red-600",
+		"gradient-cyan":   "bg-gradient-to-br from-cyan-500 to-blue-600",
+		"gradient-rose":   "bg-gradient-to-br from-rose-500 to-pink-600",
+		"gradient-indigo": "bg-gradient-to-br from-indigo-500 to-purple-600",
+		"gradient-amber":  "bg-gradient-to-br from-amber-500 to-orange-600",
+		"gradient-teal":   "bg-gradient-to-br from-teal-500 to-green-600",
+		"gradient-slate":  "bg-gradient-to-br from-slate-600 to-gray-700",
+		"solid-signal":    "bg-signal-blue",
+		"solid-dark":      "bg-signal-surface border border-white/10",
+		"solid-red":       "bg-red-600",
+		"solid-emerald":   "bg-emerald-600",
+		"solid-violet":    "bg-violet-600",
+	}
+
+	if class, ok := iconClasses[icon]; ok {
+		return class
+	}
+
+	// Default fallback
+	return "bg-signal-blue"
 }
