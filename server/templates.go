@@ -42,6 +42,32 @@ func addTemplateFunctions(engine *html.Engine) error {
 		return t.Format("Jan 2")
 	})
 
+	// Icon style helper - returns inline style for background
+	engine.AddFunc("iconStyle", func(icon string) string {
+		styles := map[string]string{
+			"gradient-blue":   "background: linear-gradient(to bottom right, #3b82f6, #1d4ed8)",
+			"gradient-purple": "background: linear-gradient(to bottom right, #a855f7, #ec4899)",
+			"gradient-green":  "background: linear-gradient(to bottom right, #22c55e, #059669)",
+			"gradient-orange": "background: linear-gradient(to bottom right, #f97316, #dc2626)",
+			"gradient-cyan":   "background: linear-gradient(to bottom right, #06b6d4, #2563eb)",
+			"gradient-rose":   "background: linear-gradient(to bottom right, #f43f5e, #ec4899)",
+			"gradient-indigo": "background: linear-gradient(to bottom right, #6366f1, #9333ea)",
+			"gradient-amber":  "background: linear-gradient(to bottom right, #f59e0b, #f97316)",
+			"gradient-teal":   "background: linear-gradient(to bottom right, #14b8a6, #059669)",
+			"gradient-slate":  "background: linear-gradient(to bottom right, #475569, #374151)",
+			"solid-signal":    "background: #2C6BED",
+			"solid-dark":      "background: #2C2C2C; border: 1px solid rgba(255,255,255,0.1)",
+			"solid-red":       "background: #dc2626",
+			"solid-emerald":   "background: #059669",
+			"solid-violet":    "background: #7c3aed",
+		}
+
+		if style, ok := styles[icon]; ok {
+			return style
+		}
+		return "background: linear-gradient(to bottom right, #3b82f6, #1d4ed8)" // Default blue gradient
+	})
+
 	// String truncation helper
 	engine.AddFunc("truncate", func(s string, length int) string {
 		if len(s) <= length {
