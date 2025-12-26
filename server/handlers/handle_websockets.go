@@ -145,25 +145,6 @@ func HandleCallInitiate(callService *calls.CallService, wsManager *_websocket.Ma
 			return apperrors.NewInternalError("Failed to initiate call").WithInternal(err)
 		}
 
-		// Send call offer to callee via WebSocket
-		offerMsg := &_websocket.Message{
-			Type: _websocket.MessageTypeCallOffer,
-			ID:   call.ID,
-			From: caller,
-			To:   callee,
-			Data: map[string]interface{}{
-				"call_id": call.ID,
-				"caller":  caller,
-			},
-			Timestamp: time.Now().Unix(),
-		}
-
-		if err := wsManager.SendToUser(callee, offerMsg); err != nil {
-			logger.WithError(err).Error("Failed to send call offer to callee")
-			callService.EndCall(call.ID, caller)
-			return apperrors.NewInternalError("Failed to reach callee")
-		}
-
 		// Update call state to ringing
 		callService.UpdateCallState(call.ID, calls.CallStateRinging)
 
