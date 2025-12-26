@@ -48,7 +48,9 @@ func Handler(config HandlerConfig) fiber.ErrorHandler {
 
 		// Determine response format based on request type
 		isHTMX := c.Get("HX-Request") == "true"
-		isAPI := strings.HasPrefix(c.Path(), "/api/") || c.Path() == "/api"
+		isAPI := strings.HasPrefix(c.Path(), "/api/") ||
+			strings.HasPrefix(c.Path(), "/call/") ||
+			c.Path() == "/api"
 
 		// Handle HTMX requests
 		if isHTMX {

@@ -90,11 +90,11 @@ class WebSocketClient {
         }
     }
 
-    sendMessage(type, data) {
+    sendMessage(type, payload) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             const message = {
                 type: type,
-                ...data,
+                data: payload,
                 timestamp: Math.floor(Date.now() / 1000)
             };
             
@@ -164,13 +164,13 @@ class VoiceCallManager {
         this.currentCallPeer = null;
         this.isInitiator = false;
         
+        // 1. Better Detection Logic
         this.isWebRTCSupported = this.detectWebRTCSupport();
         
         if (!this.isWebRTCSupported) {
-            console.warn('WebRTC is not fully supported in this browser');
+            console.warn('WebRTC is not fully supported in this browser context');
         }
         
-        // ICE servers configuration (STUN server for NAT traversal)
         this.iceServers = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -180,40 +180,63 @@ class VoiceCallManager {
     }
     
     detectWebRTCSupport() {
-        // Check RTCPeerConnection with browser prefixes
+        // Check RTCPeerConnection (Modern & Legacy)
         const hasRTCPeerConnection = !!(
             window.RTCPeerConnection ||
             window.webkitRTCPeerConnection ||
             window.mozRTCPeerConnection
         );
         
-        // Check getUserMedia
+        // Check getUserMedia (Modern & Legacy)
+        // Firefox hides 'mediaDevices' on insecure HTTP, causing the original check to fail
         const hasGetUserMedia = !!(
-            navigator.mediaDevices &&
-            typeof navigator.mediaDevices.getUserMedia === 'function'
+            (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ||
+            navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia ||
+            navigator.msGetUserMedia
         );
         
-        // Check secure context
-        const isSecureContext = window.isSecureContext || 
-                                location.protocol === 'https:';
+        // Check secure context explicitly
+        const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
         
-        const isSupported = hasRTCPeerConnection && hasGetUserMedia && isSecureContext;
-        
-        // Log details if not supported
+        const isSupported = hasRTCPeerConnection && hasGetUserMedia;
+
+        // Enhanced Debugging for Firefox
         if (!isSupported) {
-            console.log('WebRTC Support Check:', {
-                RTCPeerConnection: hasRTCPeerConnection,
-                getUserMedia: hasGetUserMedia,
-                secureContext: isSecureContext,
-                protocol: location.protocol,
-                hostname: location.hostname,
-                browser: this.detectBrowser()
-            });
+            console.group('WebRTC Support Debug');
+            console.log('RTCPeerConnection:', hasRTCPeerConnection);
+            console.log('getUserMedia:', hasGetUserMedia);
+            console.log('isSecureContext:', isSecureContext);
+            console.log('Protocol:', location.protocol);
+            
+            if (location.protocol === 'http:' && location.hostname !== 'localhost') {
+                console.error('FIREFOX ERROR: Firefox disables WebRTC APIs on HTTP connection to IP addresses. Use HTTPS or localhost.');
+            }
+            console.groupEnd();
         }
         
         return isSupported;
     }
     
+    // 2. Cross-Browser getUserMedia Helper
+    async getUserMediaCompat(constraints) {
+        // Modern API
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            return navigator.mediaDevices.getUserMedia(constraints);
+        }
+        
+        // Legacy API (Polyfill for older Firefox/Chrome)
+        const legacyGetUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+        
+        if (legacyGetUserMedia) {
+            return new Promise((resolve, reject) => {
+                legacyGetUserMedia.call(navigator, constraints, resolve, reject);
+            });
+        }
+        
+        throw new Error('getUserMedia is not supported in this browser');
+    }
+
     // Helper to detect browser
     detectBrowser() {
         const ua = navigator.userAgent;
@@ -222,6 +245,11 @@ class VoiceCallManager {
         if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
         if (ua.includes('Edg')) return 'Edge';
         return 'Unknown';
+    }
+
+    getCSRFToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
     }
 
     async initiateCall(targetUsername) {
@@ -253,22 +281,21 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             console.log('Requesting microphone access...');
             
             // Get user media (microphone)
-            this.localStream = await navigator.mediaDevices.getUserMedia({
+            this.localStream = await this.getUserMediaCompat({
                 audio: true,
                 video: false
             });
             
             console.log('Got local stream:', this.localStream);
             
-            // Create peer connection
+            // Handle different prefixes for PeerConnection
             const RTCPeerConnection = window.RTCPeerConnection ||
-                                     window.webkitRTCPeerConnection ||
-                                     window.mozRTCPeerConnection;
+                                    window.webkitRTCPeerConnection ||
+                                    window.mozRTCPeerConnection;
             
             this.pc = new RTCPeerConnection(this.iceServers);
             this.setupPeerConnection();
             
-            // Add local stream to peer connection
             this.localStream.getTracks().forEach(track => {
                 this.pc.addTrack(track, this.localStream);
             });
@@ -278,51 +305,32 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': this.getCSRFToken()
                 }
             });
             
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error?.message || 'Failed to initiate call');
-            }
-            
+            if (!response.ok) throw new Error('Failed to initiate call');
             const data = await response.json();
+            
             this.currentCallId = data.call_id;
             this.currentCallPeer = targetUsername;
             this.isInitiator = true;
             
-            console.log('Call initiated:', data);
-            
-            // Create and send offer
             const offer = await this.pc.createOffer();
             await this.pc.setLocalDescription(offer);
             
-            // Send offer via WebSocket
             this.wsClient.sendMessage('call_offer', {
                 call_id: this.currentCallId,
                 to: targetUsername,
                 sdp: offer.sdp
             });
             
-            // Show calling UI
             this.showCallingUI(targetUsername);
             
         } catch (error) {
             console.error('Failed to initiate call:', error);
             this.endCall();
-            
-            // Show user-friendly error message
-            let errorMessage = error.message;
-            
-            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings.';
-            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-                errorMessage = 'No microphone found. Please connect a microphone and try again.';
-            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-                errorMessage = 'Microphone is already in use by another application.';
-            }
-            
-            alert('Failed to start call: ' + errorMessage);
+            alert('Failed to start call: ' + error.message);
         }
     }
 
@@ -331,16 +339,21 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             if (!this.isWebRTCSupported) {
                 throw new Error('WebRTC is not supported in your browser.');
             }
+
+            // Verify we actually received an offer
+            if (!this.pendingOffer) {
+                console.warn("No pending offer found. Waiting for SDP...");
+                // In a real app, you might want to show a 'Connecting...' state here
+                throw new Error("Cannot answer: connection offer not received yet."); 
+            }
             
             console.log('Requesting microphone access...');
             
-            // Get user media
+            // Get user media (microphone)
             this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: false
             });
-            
-            console.log('Got local stream:', this.localStream);
             
             // Create peer connection
             const RTCPeerConnection = window.RTCPeerConnection ||
@@ -354,17 +367,26 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             this.localStream.getTracks().forEach(track => {
                 this.pc.addTrack(track, this.localStream);
             });
+
+            // FIX: Set Remote Description (The Offer) BEFORE creating Answer
+            console.log("Setting remote description (Offer)...");
+            await this.pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'offer',
+                sdp: this.pendingOffer
+            }));
             
-            // Answer the call
+            // Answer the call (API)
+            // Ensure you have the getCSRFToken helper method in your class!
             const response = await fetch(`/call/answer/${this.currentCallId}`, {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCSRFToken() 
+                }
             });
             
             if (!response.ok) {
                 throw new Error('Failed to answer call');
             }
-            
-            console.log('Call answered');
             
             // Create answer
             const answer = await this.pc.createAnswer();
@@ -377,27 +399,22 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
                 sdp: answer.sdp
             });
             
-            // Show active call UI
             this.showActiveCallUI();
             
         } catch (error) {
             console.error('Failed to answer call:', error);
             this.endCall();
-            
-            let errorMessage = error.message;
-            
-            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                errorMessage = 'Microphone access denied. Please allow microphone access.';
-            }
-            
-            alert('Failed to answer call: ' + errorMessage);
+            alert('Failed to answer call: ' + error.message);
         }
     }
 
     async rejectCall() {
         try {
             await fetch(`/call/reject/${this.currentCallId}`, {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCSRFToken()
+                }
             });
             
             this.cleanup();
@@ -412,7 +429,10 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
         try {
             if (this.currentCallId) {
                 await fetch(`/call/end/${this.currentCallId}`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': this.getCSRFToken()
+                    }
                 });
             }
             
@@ -496,14 +516,24 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
     }
 
     async handleIncomingCall(message) {
+        // Safety check to prevent crash
+        if (!message.data) {
+            console.warn("Received call signal without data:", message);
+            return;
+        }
+
         this.currentCallId = message.data.call_id;
         this.currentCallPeer = message.from;
         
         // Show incoming call UI
         this.showIncomingCallUI(message.from);
         
-        // Store the offer to use when user answers
-        this.pendingOffer = message.data.sdp;
+        // This handles the race condition between the Server's "Ringing" message (No SDP)
+        // and the Client's "Offer" message (Has SDP).
+        if (message.data.sdp) {
+            console.log("Received SDP Offer");
+            this.pendingOffer = message.data.sdp;
+        }
     }
 
     async handleCallAnswer(message) {

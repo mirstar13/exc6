@@ -74,10 +74,9 @@ func New(config ...Config) fiber.Handler {
 		c.Set("X-Frame-Options", "DENY")
 		c.Set("X-XSS-Protection", "1; mode=block")
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		c.Set("Permissions-Policy", "geolocation=(), microphone=(self), camera=(self)")
 
-		// Uncomment when using HTTPS
-		// c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 
 		return c.Next()
 	}
@@ -115,7 +114,7 @@ func buildCSP(cfg Config) string {
 	csp += "img-src 'self' data: blob: https:; "
 
 	// Connect sources (for SSE and API calls)
-	csp += "connect-src 'self'; "
+	csp += "connect-src 'self' ws: wss:; "
 
 	// Frame restrictions
 	csp += "frame-ancestors 'none'; "
