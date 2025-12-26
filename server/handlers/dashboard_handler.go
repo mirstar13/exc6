@@ -163,6 +163,8 @@ func HandleMarkNotificationsRead(cs *chat.ChatService, callSrv *calls.CallServic
 			logger.WithError(err).Error("Failed to mark calls seen")
 		}
 
+		c.Set("HX-Trigger", "notifications-updated")
+
 		// Return empty notification list to clear the UI immediately
 		return c.Render("partials/notifications", fiber.Map{
 			"Notifications":  []friends.FriendInfo{},

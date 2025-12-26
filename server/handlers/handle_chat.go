@@ -29,6 +29,8 @@ func HandleLoadChatWindow(cs *chat.ChatService, qdb *db.Queries) fiber.Handler {
 			logger.WithError(err).Warn("Failed to mark conversation as read")
 		}
 
+		c.Set("HX-Trigger", "notifications-updated")
+
 		history, err := cs.GetHistory(ctx, currentUser, targetUser)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{

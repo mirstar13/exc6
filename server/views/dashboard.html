@@ -105,12 +105,12 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                             
                             <span id="notification-badge" 
-                                  class="{{if eq .PendingRequestCount 0}}hidden{{end}} absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#181818]"
-                                  hx-get="/notifications" 
-                                  hx-trigger="every 10s" 
-                                  hx-target="#dashboard-notifications-list" 
-                                  hx-swap="innerHTML"
-                                  hx-on::after-request="const count = event.detail.xhr.getResponseHeader('X-Notification-Count'); if(count > 0) this.classList.remove('hidden'); else this.classList.add('hidden');">
+                                class="{{if eq .PendingRequestCount 0}}hidden{{end}} absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#181818]"
+                                hx-get="/notifications" 
+                                hx-trigger="every 10s, notifications-updated from:body" 
+                                hx-target="#dashboard-notifications-list" 
+                                hx-swap="innerHTML"
+                                hx-on::after-request="const count = event.detail.xhr.getResponseHeader('X-Notification-Count'); if(count > 0) this.classList.remove('hidden'); else this.classList.add('hidden');">
                             </span>
                         </button>
                     
@@ -324,6 +324,23 @@
                 easing: 'easeInOutSine',
                 duration: 2000
             });
+
+            const wsClient = new WebSocketClient(
+                (message) => {
+                    // On incoming chat message
+                    if (message.type === 'chat' || message.type === 'group_chat') {
+                        // Dispatch event to update notification badge
+                        document.body.dispatchEvent(new Event('notifications-updated'));
+                    }
+                },
+                (signal) => {
+                    // Handle call signals (if using voice calls)
+                    if (window.voiceCall) window.voiceCall.handleCallSignal(signal);
+                }
+            );
+            wsClient.connect();
+
+            window.voiceCall = new VoiceCallManager(wsClient, "{{.Username}}");
         });
     </script>
 </body>
