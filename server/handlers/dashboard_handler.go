@@ -4,6 +4,8 @@ import (
 	"context"
 	"exc6/db"
 	"exc6/pkg/logger"
+	"exc6/services/calls"
+	"exc6/services/chat"
 	"exc6/services/friends"
 	"exc6/services/groups"
 	"fmt"
@@ -12,35 +14,50 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
+func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs *chat.ChatService, callSrv *calls.CallService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Get friends
+		// 1. Get friends (Existing)
 		friendsList, err := fsrv.GetUserFriends(ctx, username)
 		if err != nil {
 			return err
 		}
 
-		// Get groups
+		// 2. Get groups (Existing)
 		groupsList, err := gsrv.GetUserGroups(ctx, username)
 		if err != nil {
-			// Log but don't fail - groups are optional
 			logger.WithError(err).Warn("Failed to fetch user groups")
 			groupsList = []groups.GroupInfo{}
 		}
 
-		// Get pending friend requests count for notification badge
+		// 3. Get Friend Requests (Existing)
 		requests, err := fsrv.GetFriendRequests(ctx, username)
-		requestCount := 0
-		if err == nil {
-			requestCount = len(requests)
+		if err != nil {
+			requests = []friends.FriendInfo{}
 		}
 
-		// Get current user info for icon
+		// 4. NEW: Get Unread Messages
+		unreadMap, err := cs.GetUnreadMessages(ctx, username)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to fetch unread messages")
+			unreadMap = make(map[string]int)
+		}
+
+		// 5. NEW: Get Missed Calls
+		missedCalls, err := callSrv.GetMissedCalls(ctx, username)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to fetch missed calls")
+			missedCalls = []map[string]interface{}{}
+		}
+
+		// Prepare Notification Counts
+		totalNotifications := len(requests) + len(unreadMap) + len(missedCalls)
+
+		// Get current user info (Existing)
 		user, err := qdb.GetUserByUsername(ctx, username)
 		if err != nil {
 			return err
@@ -62,12 +79,12 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, qdb
 		if token := c.Locals("csrf_token"); token != nil {
 			if tokenStr, ok := token.(string); ok {
 				csrfToken = tokenStr
-				logger.WithFields(map[string]interface{}{
+				logger.WithFields(map[string]any{
 					"username":     username,
 					"token_length": len(csrfToken),
 				}).Info("Dashboard: CSRF token retrieved from locals")
 			} else {
-				logger.WithFields(map[string]interface{}{
+				logger.WithFields(map[string]any{
 					"username":   username,
 					"token_type": fmt.Sprintf("%T", token),
 				}).Error("Dashboard: CSRF token in locals is not a string!")
@@ -78,7 +95,7 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, qdb
 
 		// CRITICAL: Log if token is missing
 		if csrfToken == "" {
-			logger.WithFields(map[string]interface{}{
+			logger.WithFields(map[string]any{
 				"username":   username,
 				"session_id": c.Cookies("session_id"),
 			}).Error("Dashboard: CSRF token is EMPTY! Template will not render meta tag!")
@@ -122,7 +139,10 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, qdb
 			"Icon":                iconValue,
 			"CustomIcon":          customIconValue,
 			"Contacts":            contacts,
-			"PendingRequestCount": requestCount,
+			"PendingRequestCount": totalNotifications,
+			"FriendRequests":      requests,
+			"UnreadMessages":      unreadMap,
+			"MissedCalls":         missedCalls,
 			"CSRFToken":           csrfToken,
 		})
 	}

@@ -105,6 +105,11 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 		}).Error("Failed to cache message")
 	}
 
+	// 1.5 Increment unread count for the recipient
+	if err := cs.IncrementUnreadCount(ctx, to, from); err != nil {
+		logger.WithError(err).Warn("Failed to increment unread count")
+	}
+
 	// 2. Try to buffer message (non-blocking)
 	select {
 	case cs.messageBuffer <- msg:
@@ -440,6 +445,37 @@ func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 	}
 
 	return contacts, nil
+}
+
+// GetUnreadMessages returns a map of sender_username -> count
+func (cs *ChatService) GetUnreadMessages(ctx context.Context, username string) (map[string]int, error) {
+	key := fmt.Sprintf("chat:unread:%s", username)
+	result, err := cs.rdb.HGetAll(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	unread := make(map[string]int)
+	for sender, countStr := range result {
+		var count int
+		fmt.Sscanf(countStr, "%d", &count)
+		if count > 0 {
+			unread[sender] = count
+		}
+	}
+	return unread, nil
+}
+
+// IncrementUnreadCount increments the unread counter for a user from a specific sender
+func (cs *ChatService) IncrementUnreadCount(ctx context.Context, recipient, sender string) error {
+	key := fmt.Sprintf("chat:unread:%s", recipient)
+	return cs.rdb.HIncrBy(ctx, key, sender, 1).Err()
+}
+
+// MarkConversationRead clears the unread count for a specific sender
+func (cs *ChatService) MarkConversationRead(ctx context.Context, recipient, sender string) error {
+	key := fmt.Sprintf("chat:unread:%s", recipient)
+	return cs.rdb.HDel(ctx, key, sender).Err()
 }
 
 // Close performs graceful shutdown

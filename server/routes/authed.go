@@ -66,7 +66,7 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	authed.Use(ar.csrfMiddleware)
 
 	// Dashboard - main chat interface
-	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.gsrv, ar.db))
+	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.gsrv, ar.csrv, ar.callService, ar.db))
 
 	// WebSocket endpoint for real-time chat and calls
 	ar.registerWebSocketRoutes(authed)

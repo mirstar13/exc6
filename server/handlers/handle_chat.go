@@ -24,6 +24,11 @@ func HandleLoadChatWindow(cs *chat.ChatService, qdb *db.Queries) fiber.Handler {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		go func() {
+			bgCtx := context.Background()
+			cs.MarkConversationRead(bgCtx, currentUser, targetUser)
+		}()
+
 		history, err := cs.GetHistory(ctx, currentUser, targetUser)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
