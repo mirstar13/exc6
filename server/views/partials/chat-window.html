@@ -1,5 +1,5 @@
 <article class="flex flex-col h-full w-full relative bg-signal-bg">
-    <header class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 sticky top-0 shrink-0">
+    <header id="chat-header" class="h-16 px-6 bg-signal-header border-b border-white/5 flex items-center justify-between z-10 sticky top-0 shrink-0 opacity-0 -translate-y-2">
         <div class="flex items-center gap-3 min-w-0">
             {{if .ContactCustomIcon}}
                 <div class="w-10 h-10 rounded-full shadow-sm shrink-0 overflow-hidden ring-2 ring-white/5">
@@ -19,19 +19,13 @@
         
         <div class="flex gap-4 text-signal-text-sub shrink-0">
             <button onclick="startCall()" title="Voice Call" class="hover:text-signal-blue transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
             </button>
             <button class="hover:text-signal-text-main transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </button>
             <button class="hover:text-signal-text-main transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
-                </svg>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
             </button>
         </div>
     </header>
@@ -45,7 +39,7 @@
             <div id="message-list" class="flex flex-col gap-1">
                 {{$me := .Me}}
                 {{range .Messages}}
-                    <div class="flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}}" data-message-id="{{.MessageID}}">
+                    <div class="message-bubble flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}} opacity-0 translate-y-2" data-message-id="{{.MessageID}}">
                         <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative {{if eq .FromID $me}}bg-signal-blue text-white rounded-2xl rounded-tr-sm{{else}}bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
                             {{.Content}}
                             <div class="text-[10px] opacity-60 text-right mt-1 select-none {{if eq .FromID $me}}text-blue-100{{else}}text-signal-text-sub{{end}}">
@@ -58,16 +52,14 @@
         </div>
     </div>
 
-    <footer class="p-4 bg-signal-bg shrink-0">
+    <footer id="chat-footer" class="p-4 bg-signal-bg shrink-0 opacity-0 translate-y-2">
         <form id="chat-form" onsubmit="return sendMessage(event)" class="flex items-end gap-2 m-0 relative">
             {{if .CSRFToken}}
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             {{end}}
 
             <button type="button" class="p-3 text-signal-text-sub hover:text-signal-text-main transition-colors rounded-full hover:bg-signal-surface mb-0.5 shrink-0">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                </svg>
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
 
             <div class="flex-1 bg-signal-surface rounded-[24px] flex items-center px-4 py-2 border border-transparent focus-within:border-signal-text-sub/30 transition-all min-w-0">
@@ -76,9 +68,7 @@
             </div>
             
             <button type="submit" class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 mb-0.5 group shrink-0">
-                <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-                </svg>
+                <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
             </button>
         </form>
     </footer>
@@ -92,32 +82,80 @@
             const chatInput = document.getElementById('chat-input');
             const chatForm = document.getElementById('chat-form');
             
+            // Animation: Run immediately on load
+            if (window.anime) {
+                const tl = anime.timeline({ easing: 'easeOutExpo' });
+                
+                // 1. Header slide down
+                tl.add({
+                    targets: '#chat-header',
+                    translateY: [-10, 0],
+                    opacity: [0, 1],
+                    duration: 600
+                })
+                // 2. Footer slide up
+                .add({
+                    targets: '#chat-footer',
+                    translateY: [10, 0],
+                    opacity: [0, 1],
+                    duration: 600
+                }, '-=400')
+                // 3. Messages stagger in
+                .add({
+                    targets: '.message-bubble',
+                    translateY: [10, 0],
+                    opacity: [0, 1],
+                    delay: anime.stagger(20, {start: 100}), // fast stagger for many messages
+                    duration: 400,
+                    complete: function() {
+                        // Ensure we are scrolled to bottom after animation
+                        scrollToBottom();
+                    }
+                }, '-=500');
+            }
+
             let wsClient = null;
             let voiceCall = null;
             
             // Initialize WebSocket
             function initWebSocket() {
-                wsClient = new WebSocketClient(
-                    handleChatMessage,
-                    handleCallSignal
-                );
-                
+                wsClient = new WebSocketClient(handleChatMessage, handleCallSignal);
                 wsClient.connect();
-                
-                // Initialize voice call manager
                 voiceCall = new VoiceCallManager(wsClient, currentUser);
-                window.voiceCall = voiceCall; // Make globally accessible for buttons
+                window.voiceCall = voiceCall;
             }
             
             // Handle incoming chat messages
             function handleChatMessage(message) {
                 const isRelevant = (message.from === currentUser && message.to === contactName) ||
                                  (message.from === contactName && message.to === currentUser);
-                
                 if (!isRelevant) return;
                 
                 const messageHTML = renderMessage(message);
-                messageList.insertAdjacentHTML('beforeend', messageHTML);
+                
+                // Animate new message entering
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = messageHTML;
+                const newMsg = tempDiv.firstElementChild;
+                newMsg.style.opacity = 0; // Prepare for animation
+                newMsg.style.transform = 'translateY(10px)';
+                
+                messageList.appendChild(newMsg);
+                
+                // Animate the single new message
+                if (window.anime) {
+                    anime({
+                        targets: newMsg,
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        easing: 'easeOutQuad',
+                        duration: 300
+                    });
+                } else {
+                    newMsg.style.opacity = 1;
+                    newMsg.style.transform = 'translateY(0)';
+                }
+
                 scrollToBottom();
             }
             
@@ -125,39 +163,24 @@
             function handleCallSignal(message) {
                 voiceCall.handleCallSignal(message);
             }
-            
+
             // Send message
             window.sendMessage = function(event) {
                 event.preventDefault();
-                
                 const content = chatInput.value.trim();
                 if (!content) return false;
-
-                // Get CSRF Token from hidden input or meta tag
+                
                 const csrfTokenInput = chatForm.querySelector('input[name="csrf_token"]');
                 const csrfToken = csrfTokenInput ? csrfTokenInput.value : 
                                 (document.querySelector('meta[name="csrf-token"]')?.content || '');
-                
+
                 fetch('/chat/' + contactName, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRF-Token': csrfToken
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
                     body: 'content=' + encodeURIComponent(content)
-                })
-                .then(response => {
-                    if (response.ok) {
-                        chatInput.value = '';
-                        chatInput.focus();
-                    } else {
-                        console.error('Send failed:', response.status);
-                    }
-                })
-                .catch(error => {
-                    console.error('Failed to send message:', error);
+                }).then(response => {
+                    if (response.ok) { chatInput.value = ''; chatInput.focus(); }
                 });
-                
                 return false;
             };
             
@@ -184,36 +207,16 @@
                 `;
             }
             
-            function escapeHTML(str) {
-                const div = document.createElement('div');
-                div.textContent = str;
-                return div.innerHTML;
-            }
+            function escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
             
             function formatTime(timestamp) {
-                const date = new Date(timestamp * 1000);
-                const now = new Date();
-                
-                if (date.toDateString() === now.toDateString()) {
-                    return date.toLocaleTimeString('en-US', { 
-                        hour: 'numeric', 
-                        minute: '2-digit' 
-                    });
-                }
-                
-                return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric' 
-                });
+                const date = new Date(timestamp * 1000); const now = new Date();
+                if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             }
             
-            function scrollToBottom() {
-                setTimeout(() => {
-                    scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
-                }, 50);
-            }
+            function scrollToBottom() { setTimeout(() => { scrollWrapper.scrollTop = scrollWrapper.scrollHeight; }, 50); }
             
-            // Initialize
             scrollToBottom();
             initWebSocket();
             

@@ -10,9 +10,11 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script src="/scripts/js/websocket-client.js"></script>
     <script>
+        // ... (Keep existing tailwind config) ...
         tailwind.config = {
             safelist: [
                 'bg-gradient-to-br',
@@ -42,6 +44,7 @@
         }
     </script>
     <style>
+        /* ... (Keep existing styles) ... */
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -55,58 +58,31 @@
         .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
         .htmx-request .htmx-indicator { opacity: 1; }
 
-        /* --- Sidebar Collapse Logic --- */
         #sidebar { transition: width 0.3s ease; }
-        
-        /* Collapsed State Width */
         #sidebar.collapsed { width: 80px !important; }
-
-        /* When collapsed, stack the header vertically to fit all icons */
         #sidebar.collapsed .sidebar-header {
-            flex-direction: column;
-            height: auto;
-            padding-top: 1.5rem;
-            padding-bottom: 1rem;
-            gap: 1.5rem;
+            flex-direction: column; height: auto; padding-top: 1.5rem; padding-bottom: 1rem; gap: 1.5rem;
         }
-        
-        #sidebar.collapsed .header-actions {
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        /* Hide text elements */
-        #sidebar.collapsed .sidebar-text { 
-            display: none; 
-            opacity: 0;
-        }
-
-        /* Adjust Search Bar */
+        #sidebar.collapsed .header-actions { flex-direction: column; gap: 1rem; }
+        #sidebar.collapsed .sidebar-text { display: none; opacity: 0; }
         #sidebar.collapsed .search-input { display: none; }
-        #sidebar.collapsed .search-wrapper { 
-            background-color: transparent; 
-            padding: 0;
-            justify-content: center; 
-        }
-
-        /* Center the contact list items */
-        #sidebar.collapsed .contact-item {
-            justify-content: center;
-        }
-        
-        /* Rotate the toggle arrow */
+        #sidebar.collapsed .search-wrapper { background-color: transparent; padding: 0; justify-content: center; }
+        #sidebar.collapsed .contact-item { justify-content: center; }
         #sidebar.collapsed .toggle-arrow { transform: rotate(180deg); }
+
+        /* Animation specific */
+        .contact-list-item { opacity: 0; } /* Hide initially */
+        .chat-placeholder { opacity: 0; }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body class="h-screen w-screen m-0 overflow-hidden bg-signal-bg text-signal-text-main font-sans selection:bg-signal-blue selection:text-white">
 
     <div class="flex h-full w-full">
-        
         <aside id="sidebar" class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20 relative">
             
             <div class="sidebar-header h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5 transition-all">
-                <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
+               <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
                     {{if .CustomIcon}}
                         <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
                             <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
@@ -119,28 +95,15 @@
                 </a>
                 
                 <div class="header-actions flex gap-2 transition-all">
-                    <a href="/friends" title="Friends"
-                       class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all group relative">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                        </svg>
-                        {{if gt .PendingRequestCount 0}}
-                        <span class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-signal-blue rounded-full"></span>
-                        {{end}}
+                    <a href="/friends" title="Friends" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all group relative">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        {{if gt .PendingRequestCount 0}}<span class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-signal-blue rounded-full"></span>{{end}}
                     </a>
-
-                    <button onclick="openGroupModal()" title="Create Group"
-                            class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                        </svg>
+                    <button onclick="openGroupModal()" title="Create Group" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     </button>
-                    
-                    <button hx-post="/logout" title="Sign Out"
-                            class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-red-400 transition-all">
-                       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                       </svg>
+                    <button hx-post="/logout" title="Sign Out" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-red-400 transition-all">
+                       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </button>
                 </div>
             </div>
@@ -154,31 +117,18 @@
 
             <div class="flex-1 overflow-y-auto custom-scrollbar">
                 {{range .Contacts}}
-                    <div class="px-2">
+                    <div class="px-2 contact-list-item">
                         {{if .IsGroup}}
                             <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                 hx-get="/groups/{{.GroupID}}/chat"
-                                 hx-target="#main-chat-area" 
-                                 hx-swap="innerHTML">
-                    
+                                 hx-get="/groups/{{.GroupID}}/chat" hx-target="#main-chat-area" hx-swap="innerHTML">
                                 {{if .CustomIcon}}
-                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5">
-                                        <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
-                                    </div>
+                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
                                 {{else}}
-                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
-                                        {{slice .Username 0 1}}
-                                    </div>
+                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">{{slice .Username 0 1}}</div>
                                 {{end}}
-                                
                                 <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
-                                        <div class="flex items-center gap-2">
-                                            <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
-                                            <svg class="w-3 h-3 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                                            </svg>
-                                        </div>
+                                        <div class="flex items-center gap-2"><h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3></div>
                                         <span class="text-xs text-signal-text-sub">Now</span>
                                     </div>
                                     <p class="text-sm text-signal-text-sub truncate">Group chat</p>
@@ -186,20 +136,12 @@
                             </div>
                         {{else}}
                             <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                 hx-get="/chat/{{.Username}}"
-                                 hx-target="#main-chat-area" 
-                                 hx-swap="innerHTML">
-                        
+                                 hx-get="/chat/{{.Username}}" hx-target="#main-chat-area" hx-swap="innerHTML">
                                 {{if .CustomIcon}}
-                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5">
-                                        <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
-                                    </div>
+                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
                                 {{else}}
-                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">
-                                        {{slice .Username 0 1}}
-                                    </div>
+                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">{{slice .Username 0 1}}</div>
                                 {{end}}
-                                
                                 <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
                                         <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
@@ -215,16 +157,14 @@
 
             <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
                 <button onclick="toggleSidebar()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-signal-surface text-signal-text-sub transition-all">
-                    <svg class="toggle-arrow w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                    </svg>
+                    <svg class="toggle-arrow w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
                 </button>
             </div>
         </aside>
 
-        <main id="main-chat-area" class="flex-1 bg-signal-bg h-full flex flex-col relative">
-            <div class="h-full flex flex-col items-center justify-center text-signal-text-sub animate-fade-in">
-                <div class="w-24 h-24 bg-signal-surface rounded-full flex items-center justify-center mb-6">
+        <main id="main-chat-area" class="flex-1 bg-signal-bg h-full flex flex-col relative chat-placeholder">
+            <div class="h-full flex flex-col items-center justify-center text-signal-text-sub">
+                <div class="w-24 h-24 bg-signal-surface rounded-full flex items-center justify-center mb-6 placeholder-icon">
                    <svg class="w-10 h-10 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                 </div>
                 <h2 class="text-xl font-medium mb-2 text-signal-text-main">Signal for Web</h2>
@@ -234,8 +174,7 @@
     </div>
 
     <div id="group-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 animate-slide-up">
-            <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
+       <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 modal-content"> <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
             <form hx-post="/groups/create" hx-target="#group-modal" hx-swap="outerHTML">
                 <div class="space-y-4">
                     <div>
@@ -249,13 +188,8 @@
                                   class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main focus:outline-none focus:border-signal-blue"></textarea>
                     </div>
                     <div class="flex gap-3 pt-4">
-                        <button type="submit" class="flex-1 bg-signal-blue hover:bg-signal-bluehover text-white py-2.5 rounded-xl transition-all">
-                            Create
-                        </button>
-                        <button type="button" onclick="closeGroupModal()"
-                                class="flex-1 bg-signal-bg hover:bg-signal-hover text-signal-text-main py-2.5 rounded-xl transition-all">
-                            Cancel
-                        </button>
+                        <button type="submit" class="flex-1 bg-signal-blue hover:bg-signal-bluehover text-white py-2.5 rounded-xl transition-all">Create</button>
+                        <button type="button" onclick="closeGroupModal()" class="flex-1 bg-signal-bg hover:bg-signal-hover text-signal-text-main py-2.5 rounded-xl transition-all">Cancel</button>
                     </div>
                 </div>
             </form>
@@ -268,35 +202,66 @@
         }
 
         function openGroupModal() {
-            document.getElementById('group-modal').classList.remove('hidden');
+            const modal = document.getElementById('group-modal');
+            modal.classList.remove('hidden');
+            // Animate Modal In
+            anime({
+                targets: '.modal-content',
+                scale: [0.9, 1],
+                opacity: [0, 1],
+                duration: 300,
+                easing: 'easeOutQuad'
+            });
         }
         
         function closeGroupModal() {
             document.getElementById('group-modal').classList.add('hidden');
         }
         
-        // Close modal on backdrop click
         document.getElementById('group-modal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeGroupModal();
             }
         });
         
-        // Handle successful group creation
         document.body.addEventListener('htmx:afterSwap', function(evt) {
             if (evt.detail.target.id === 'group-modal' && evt.detail.xhr.status === 200) {
-                // Reload page to show new group
                 setTimeout(() => window.location.reload(), 1500);
             }
         });
-    </script>
 
-    <style>
-        @keyframes slide-up {
-            0% { transform: translateY(20px); opacity: 0; }
-            100% { transform: translateY(0); opacity: 1; }
-        }
-        .animate-slide-up { animation: slide-up 0.3s ease-out; }
-    </style>
+        // Dashboard Entrance Animations
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Sidebar Contacts Stagger
+            anime({
+                targets: '.contact-list-item',
+                translateX: [-20, 0],
+                opacity: [0, 1],
+                delay: anime.stagger(50),
+                easing: 'easeOutQuad',
+                duration: 400
+            });
+
+            // 2. Main Placeholder Fade
+            anime({
+                targets: '.chat-placeholder',
+                opacity: [0, 1],
+                scale: [0.98, 1],
+                easing: 'easeOutExpo',
+                duration: 800,
+                delay: 200
+            });
+
+            // 3. Placeholder Icon Float
+            anime({
+                targets: '.placeholder-icon',
+                translateY: [-5, 5],
+                direction: 'alternate',
+                loop: true,
+                easing: 'easeInOutSine',
+                duration: 2000
+            });
+        });
+    </script>
 </body>
 </html>

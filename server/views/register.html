@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - SecureChat</title>
+    <title>Register - SecureChat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     
     <script>
@@ -27,15 +28,6 @@
                             },
                             danger: '#CC4040'
                         }
-                    },
-                    animation: {
-                        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                    },
-                    keyframes: {
-                        slideUp: {
-                            '0%': { transform: 'translateY(10px)', opacity: '0' },
-                            '100%': { transform: 'translateY(0)', opacity: '1' },
-                        }
                     }
                 }
             }
@@ -45,6 +37,9 @@
         .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
         .htmx-request .htmx-indicator { opacity: 1; }
         .htmx-request.htmx-indicator { opacity: 1; }
+        
+        /* Initial state hidden for animation */
+        #auth-container { opacity: 0; transform: translateY(20px); }
     </style>
 </head>
 <body class="bg-signal-bg flex items-center justify-center min-h-screen font-sans antialiased">
@@ -53,5 +48,17 @@
         {{template "partials/register" .}}
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            anime({
+                targets: '#auth-container',
+                translateY: [50, 0],
+                opacity: [0, 1],
+                easing: 'easeOutExpo',
+                duration: 1000,
+                delay: 100
+            });
+        });
+    </script>
 </body>
 </html>

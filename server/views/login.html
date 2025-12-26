@@ -6,6 +6,7 @@
     <title>Login - SecureChat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
@@ -26,15 +27,6 @@
                             },
                             danger: '#CC4040'
                         }
-                    },
-                    animation: {
-                        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                    },
-                    keyframes: {
-                        slideUp: {
-                            '0%': { transform: 'translateY(10px)', opacity: '0' },
-                            '100%': { transform: 'translateY(0)', opacity: '1' },
-                        }
                     }
                 }
             }
@@ -44,6 +36,7 @@
         .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
         .htmx-request .htmx-indicator { opacity: 1; }
         .htmx-request.htmx-indicator { opacity: 1; }
+        #auth-container { opacity: 0; } /* Hide initially */
     </style>
 </head>
 <body class="bg-signal-bg flex items-center justify-center min-h-screen font-sans antialiased">
@@ -52,5 +45,17 @@
         {{template "partials/login" .}}
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            anime({
+                targets: '#auth-container',
+                translateY: [50, 0],
+                opacity: [0, 1],
+                easing: 'easeOutExpo',
+                duration: 1000,
+                delay: 100
+            });
+        });
+    </script>
 </body>
 </html>

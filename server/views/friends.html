@@ -6,6 +6,7 @@
     <title>Friends - SecureChat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
@@ -34,10 +35,14 @@
         }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .page-section { opacity: 0; }
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+    </style>
 </head>
-<body class="h-screen bg-signal-bg font-sans antialiased">
+<body class="h-screen bg-signal-bg font-sans antialiased overflow-y-scroll">
 
-    <!-- Navigation -->
     <nav class="h-14 px-4 bg-signal-header border-b border-white/5 flex justify-between items-center sticky top-0 z-50 backdrop-blur-sm">
         <div class="flex items-center gap-3">
             <div class="w-8 h-8 bg-signal-blue rounded-full flex items-center justify-center shadow-lg shadow-blue-900/20">
@@ -61,8 +66,7 @@
     <main class="max-w-6xl mx-auto mt-8 px-4 pb-8">
         <div class="grid md:grid-cols-2 gap-6">
             
-            <!-- Friend Requests Section -->
-            <section class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+            <section class="page-section bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
                 <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
                     <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
                         <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,11 +84,10 @@
                 </div>
             </section>
 
-            <!-- Add Friends Section -->
-            <section class="bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+            <section class="page-section bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
                 <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
                     <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
-                        <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
                         </svg>
                         Add Friends
@@ -114,9 +117,8 @@
             </section>
         </div>
 
-        <!-- Current Friends Section -->
-        <section class="mt-6 bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
-            <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+        <section class="page-section mt-6 bg-signal-sidebar rounded-2xl shadow-xl border border-white/5 overflow-hidden">
+             <header class="p-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
                 <h2 class="text-xl font-bold text-signal-text-main flex items-center gap-2">
                     <svg class="w-5 h-5 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
@@ -134,10 +136,17 @@
         </section>
     </main>
 
-    <style>
-        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
-        .htmx-request .htmx-indicator { opacity: 1; }
-    </style>
-
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            anime({
+                targets: '.page-section',
+                translateY: [20, 0],
+                opacity: [0, 1],
+                delay: anime.stagger(150),
+                easing: 'easeOutExpo',
+                duration: 800
+            });
+        });
+    </script>
 </body>
 </html>

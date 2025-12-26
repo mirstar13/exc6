@@ -6,6 +6,7 @@
     <title>Groups - SecureChat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
@@ -23,6 +24,9 @@
             }
         }
     </script>
+    <style>
+        .group-card { opacity: 0; }
+    </style>
 </head>
 <body class="h-screen bg-signal-bg font-sans antialiased">
     <nav class="h-14 px-4 bg-signal-header border-b border-white/5 flex justify-between items-center">
@@ -43,14 +47,14 @@
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-bold text-signal-text-main">Your Groups</h1>
             <button onclick="document.getElementById('create-modal').classList.remove('hidden')"
-                    class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-xl transition-all">
+                    class="px-4 py-2 bg-signal-blue hover:bg-signal-bluehover text-white rounded-xl transition-all hover:scale-105 active:scale-95">
                 Create Group
             </button>
         </div>
 
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {{range .Groups}}
-            <a href="/groups/{{.ID}}/chat" class="bg-signal-sidebar rounded-xl p-6 border border-white/5 hover:bg-signal-surface transition-colors">
+            <a href="/groups/{{.ID}}/chat" class="group-card bg-signal-sidebar rounded-xl p-6 border border-white/5 hover:bg-signal-surface transition-colors">
                 <div class="flex items-center gap-4 mb-4">
                     {{if .CustomIcon}}
                     <img src="{{.CustomIcon}}" class="w-12 h-12 rounded-full" alt="{{.Name}}">
@@ -83,7 +87,6 @@
         </div>
     </main>
 
-    <!-- Create Group Modal -->
     <div id="create-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4">
             <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
@@ -112,5 +115,18 @@
             </form>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            anime({
+                targets: '.group-card',
+                translateY: [30, 0],
+                opacity: [0, 1],
+                delay: anime.stagger(100),
+                easing: 'easeOutExpo',
+                duration: 800
+            });
+        });
+    </script>
 </body>
 </html>

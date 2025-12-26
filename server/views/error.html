@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}} - SecureChat</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
@@ -34,18 +35,11 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        @keyframes fadeIn {
-            0% { opacity: 0; transform: translateY(20px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.5s ease-out;
-        }
+        .anim-el { opacity: 0; }
     </style>
 </head>
 <body class="bg-signal-bg text-signal-text-main font-sans antialiased min-h-screen flex flex-col">
 
-    <!-- Navigation -->
     <nav class="bg-signal-header border-b border-white/5 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -65,12 +59,10 @@
         </div>
     </nav>
 
-    <!-- Error Content -->
     <main class="flex-1 flex items-center justify-center px-6 py-12">
-        <div class="max-w-2xl w-full text-center animate-fade-in">
+        <div class="max-w-2xl w-full text-center">
             
-            <!-- Error Icon -->
-            <div class="mb-8 flex justify-center">
+            <div class="mb-8 flex justify-center anim-el icon-target">
                 {{if ge .StatusCode 500}}
                     <div class="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center border-2 border-red-500/20">
                         <svg class="w-12 h-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,30 +90,26 @@
                 {{end}}
             </div>
 
-            <!-- Status Code -->
-            <div class="mb-4">
+            <div class="mb-4 anim-el">
                 <h1 class="text-6xl font-bold text-white mb-2">{{.StatusCode}}</h1>
                 <h2 class="text-2xl font-semibold text-signal-text-main">{{.Title}}</h2>
             </div>
 
-            <!-- Error Code Badge -->
             {{if .ErrorCode}}
-            <div class="mb-6 flex justify-center">
+            <div class="mb-6 flex justify-center anim-el">
                 <span class="inline-block bg-signal-surface px-4 py-2 rounded-full text-signal-text-sub text-sm font-mono border border-white/10">
                     {{.ErrorCode}}
                 </span>
             </div>
             {{end}}
 
-            <!-- Error Message -->
-            <div class="mb-8">
+            <div class="mb-8 anim-el">
                 <p class="text-lg text-signal-text-sub leading-relaxed max-w-xl mx-auto">
                     {{.Message}}
                 </p>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 anim-el">
                 <a href="javascript:history.back()" class="px-6 py-3 bg-signal-surface hover:bg-signal-hover text-signal-text-main font-semibold rounded-full transition-all border border-white/10 hover:border-signal-blue/50 inline-flex items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
@@ -136,8 +124,7 @@
                 </a>
             </div>
 
-            <!-- Additional Help Text -->
-            <div class="mt-12 pt-8 border-t border-white/5">
+            <div class="mt-12 pt-8 border-t border-white/5 anim-el">
                 <p class="text-sm text-signal-text-sub">
                     {{if ge .StatusCode 500}}
                         If this problem persists, please contact support.
@@ -154,12 +141,36 @@
         </div>
     </main>
 
-    <!-- Footer -->
     <footer class="py-8 px-6 bg-signal-bg border-t border-white/5">
         <div class="max-w-7xl mx-auto text-center text-signal-text-sub text-sm">
             <p>&copy; 2024 SecureChat. Privacy-focused messaging for everyone.</p>
         </div>
     </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tl = anime.timeline({
+                easing: 'easeOutExpo',
+                duration: 800
+            });
+
+            // 1. Icon Pop
+            tl.add({
+                targets: '.icon-target',
+                scale: [0, 1],
+                opacity: [0, 1],
+                easing: 'spring(1, 80, 10, 0)',
+                delay: 200
+            })
+            // 2. Content Stagger
+            .add({
+                targets: '.anim-el:not(.icon-target)',
+                translateY: [20, 0],
+                opacity: [0, 1],
+                delay: anime.stagger(100),
+            }, '-=400');
+        });
+    </script>
 
 </body>
 </html>

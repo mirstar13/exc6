@@ -6,6 +6,7 @@
     <title>sarA Messaging Platform</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script>
         tailwind.config = {
@@ -34,14 +35,18 @@
         }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Initial states for animations to prevent flashing */
+        .hero-element { opacity: 0; transform: translateY(20px); }
+        .feature-card { opacity: 0; transform: translateY(30px); }
+        .chat-bubble { opacity: 0; transform: scale(0.8); }
+    </style>
 </head>
-<body class="bg-signal-bg text-signal-text-main font-sans antialiased">
+<body class="bg-signal-bg text-signal-text-main font-sans antialiased overflow-x-hidden">
     
-    <!-- Navigation -->
-    <nav class="fixed top-0 left-0 right-0 z-50 bg-signal-header/95 backdrop-blur-sm border-b border-white/5">
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-signal-header/95 backdrop-blur-sm border-b border-white/5 nav-bar">
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-            <!-- Logo -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 logo-container">
                 <div class="w-10 h-10 bg-signal-blue rounded-full flex items-center justify-center shadow-lg shadow-blue-900/20">
                     <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
@@ -50,8 +55,7 @@
                 <span class="text-xl font-bold text-white">sarAChat</span>
             </div>
             
-            <!-- Action Buttons -->
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 nav-actions">
                 <a href="/login-form" class="px-5 py-2 text-signal-text-sub hover:text-signal-blue font-medium transition-colors">
                     Log In
                 </a>
@@ -67,39 +71,39 @@
 
     <main class="pt-32 pb-20 px-6">
         <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-6xl md:text-7xl font-bold mb-6 leading-tight text-white">
+            <h1 class="hero-element text-6xl md:text-7xl font-bold mb-6 leading-tight text-white">
                 Say "hello" to a different<br>
                 messaging experience
             </h1>
             
-            <p class="text-xl md:text-2xl text-signal-text-sub mb-12 max-w-2xl mx-auto leading-relaxed">
+            <p class="hero-element text-xl md:text-2xl text-signal-text-sub mb-12 max-w-2xl mx-auto leading-relaxed">
                 An unexpected focus on privacy, combined with all of the features you expect.
             </p>
             
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-                <a href="/download" class="px-8 py-4 bg-signal-blue hover:bg-signal-bluehover text-white font-semibold rounded-full transition-all shadow-lg hover:shadow-blue-900/30 text-lg">
+            <div class="hero-element flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                <a href="/download" class="px-8 py-4 bg-signal-blue hover:bg-signal-bluehover text-white font-semibold rounded-full transition-all shadow-lg hover:shadow-blue-900/30 text-lg hover:-translate-y-1">
                     Download for Desktop
                 </a>
-                <a href="/register-form" class="px-8 py-4 bg-signal-surface hover:bg-signal-hover text-white font-semibold rounded-full border-2 border-white/10 hover:border-signal-blue transition-all text-lg">
+                <a href="/register-form" class="px-8 py-4 bg-signal-surface hover:bg-signal-hover text-white font-semibold rounded-full border-2 border-white/10 hover:border-signal-blue transition-all text-lg hover:-translate-y-1">
                     Get Started
                 </a>
             </div>
             
-            <div class="relative max-w-3xl mx-auto">
+            <div class="relative max-w-3xl mx-auto hero-image-container opacity-0">
                 <div class="bg-gradient-to-br from-signal-sidebar to-signal-header rounded-3xl p-12 shadow-2xl border border-white/5">
                     <div class="bg-signal-bg rounded-3xl shadow-xl p-8 max-w-sm mx-auto border-8 border-signal-surface">
                         <div class="space-y-4">
-                            <div class="flex justify-end">
+                            <div class="flex justify-end chat-bubble">
                                 <div class="bg-signal-blue text-white rounded-3xl rounded-tr-sm px-6 py-3 max-w-xs shadow-lg">
                                     Privacy matters
                                 </div>
                             </div>
-                            <div class="flex justify-start">
+                            <div class="flex justify-start chat-bubble">
                                 <div class="bg-signal-surface text-signal-text-main rounded-3xl rounded-tl-sm px-6 py-3 max-w-xs border border-white/5">
                                     End-to-end encrypted
                                 </div>
                             </div>
-                            <div class="flex justify-end">
+                            <div class="flex justify-end chat-bubble">
                                 <div class="bg-signal-blue text-white rounded-3xl rounded-tr-sm px-6 py-3 max-w-xs shadow-lg">
                                     Always sarA 🔒
                                 </div>
@@ -113,13 +117,13 @@
 
     <section class="py-20 px-6 bg-signal-sidebar border-t border-white/5">
         <div class="max-w-6xl mx-auto">
-            <h2 class="text-4xl md:text-5xl font-bold text-center mb-16 text-white">
+            <h2 class="section-title text-4xl md:text-5xl font-bold text-center mb-16 text-white opacity-0 translate-y-8">
                 Built for you
             </h2>
             
             <div class="grid md:grid-cols-3 gap-12">
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10">
+                <div class="text-center feature-card">
+                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10 icon-bounce">
                         <svg class="w-8 h-8 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                         </svg>
@@ -128,8 +132,8 @@
                     <p class="text-signal-text-sub">Your messages are sarAd with state-of-the-art encryption.</p>
                 </div>
                 
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10">
+                <div class="text-center feature-card">
+                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10 icon-bounce">
                         <svg class="w-8 h-8 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
@@ -138,8 +142,8 @@
                     <p class="text-signal-text-sub">Messages delivered instantly, even on slow connections.</p>
                 </div>
                 
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10">
+                <div class="text-center feature-card">
+                    <div class="w-16 h-16 bg-signal-blue/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-signal-blue/30 shadow-lg shadow-blue-900/10 icon-bounce">
                         <svg class="w-8 h-8 text-signal-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
                         </svg>
@@ -151,12 +155,83 @@
         </div>
     </section>
 
-    <!-- Footer -->
     <footer class="py-12 px-6 bg-signal-bg border-t border-white/5">
         <div class="max-w-6xl mx-auto text-center text-signal-text-sub">
             <p>&copy; 2024 sarAChat. Privacy-focused messaging for everyone.</p>
         </div>
     </footer>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Hero Text & Buttons Animation
+            anime({
+                targets: '.hero-element',
+                translateY: [20, 0],
+                opacity: [0, 1],
+                easing: 'easeOutExpo',
+                duration: 1200,
+                delay: anime.stagger(200, {start: 300})
+            });
+
+            // 2. Chat Interface Fade In
+            anime({
+                targets: '.hero-image-container',
+                opacity: [0, 1],
+                translateY: [30, 0],
+                easing: 'easeOutQuad',
+                duration: 1000,
+                delay: 800
+            });
+
+            // 3. Chat Bubbles Pop In
+            anime({
+                targets: '.chat-bubble',
+                scale: [0.8, 1],
+                opacity: [0, 1],
+                translateY: [20, 0],
+                easing: 'spring(1, 80, 10, 0)',
+                delay: anime.stagger(300, {start: 1200})
+            });
+
+            // 4. Logo Spin on Hover (Interactive)
+            const logo = document.querySelector('.logo-container');
+            logo.addEventListener('mouseenter', () => {
+                anime({
+                    targets: logo.querySelector('svg'),
+                    rotate: '1turn',
+                    easing: 'easeInOutSine',
+                    duration: 600
+                });
+            });
+
+            // 5. Scroll Animation for Features
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        anime({
+                            targets: '.section-title',
+                            opacity: [0, 1],
+                            translateY: [30, 0],
+                            duration: 1000,
+                            easing: 'easeOutExpo'
+                        });
+                        
+                        anime({
+                            targets: '.feature-card',
+                            opacity: [0, 1],
+                            translateY: [30, 0],
+                            delay: anime.stagger(200, {start: 200}),
+                            duration: 1200,
+                            easing: 'easeOutElastic(1, .8)'
+                        });
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.2 });
+
+            const section = document.querySelector('section');
+            if(section) observer.observe(section);
+        });
+    </script>
 </body>
 </html>
