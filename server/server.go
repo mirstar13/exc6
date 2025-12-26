@@ -169,6 +169,15 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 func (s *Server) Start() error {
 	addr := s.cfg.ServerAddress()
+
+	certFile := os.Getenv("TLS_CERT_FILE")
+	keyFile := os.Getenv("TLS_KEY_FILE")
+
+	if certFile != "" && keyFile != "" {
+		log.Printf("Starting HTTPS server on %s", addr)
+		return s.App.ListenTLS(addr, certFile, keyFile)
+	}
+
 	log.Printf("Starting server on %s", addr)
 	return s.App.Listen(addr)
 }

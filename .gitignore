@@ -28,7 +28,6 @@ go.work.sum
 log
 *.log
 
-
 # confs
 *.json
 *.conf
@@ -37,3 +36,6 @@ nul
 # useless files
 server/uploads/icons/*
 ./claude
+
+# sensitive files
+certs/*

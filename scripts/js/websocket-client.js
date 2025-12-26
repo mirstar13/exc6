@@ -164,7 +164,6 @@ class VoiceCallManager {
         this.currentCallPeer = null;
         this.isInitiator = false;
         
-        // FIXED: Proper WebRTC detection for all modern browsers including Firefox
         this.isWebRTCSupported = this.detectWebRTCSupport();
         
         if (!this.isWebRTCSupported) {
@@ -180,44 +179,71 @@ class VoiceCallManager {
         };
     }
     
-    // FIXED: Better WebRTC detection that works in Firefox
     detectWebRTCSupport() {
-        // Check RTCPeerConnection (works in all modern browsers)
-        const hasRTCPeerConnection = !!(
-            window.RTCPeerConnection ||
-            window.webkitRTCPeerConnection ||
-            window.mozRTCPeerConnection
-        );
+        // Check RTCPeerConnection
+        const hasRTCPeerConnection = typeof window.RTCPeerConnection !== 'undefined';
         
-        // Check getUserMedia (modern API)
+        // Check getUserMedia
         const hasGetUserMedia = !!(
             navigator.mediaDevices &&
-            navigator.mediaDevices.getUserMedia
+            typeof navigator.mediaDevices.getUserMedia === 'function'
         );
         
-        // Check if we're in a secure context (required for WebRTC)
+        // Check secure context
         const isSecureContext = window.isSecureContext || 
-                                location.protocol === 'https:' || 
-                                ['localhost', '127.0.0.1'].includes(location.hostname);
+                                location.protocol === 'https:';
         
         const isSupported = hasRTCPeerConnection && hasGetUserMedia && isSecureContext;
         
+        // Log details if not supported
         if (!isSupported) {
             console.log('WebRTC Support Check:', {
                 RTCPeerConnection: hasRTCPeerConnection,
                 getUserMedia: hasGetUserMedia,
-                secureContext: isSecureContext
+                secureContext: isSecureContext,
+                protocol: location.protocol,
+                hostname: location.hostname,
+                browser: this.detectBrowser()
             });
         }
         
         return isSupported;
+    }
+    
+    // Helper to detect browser
+    detectBrowser() {
+        const ua = navigator.userAgent;
+        if (ua.includes('Firefox')) return 'Firefox';
+        if (ua.includes('Chrome') && !ua.includes('Edg')) return 'Chrome';
+        if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+        if (ua.includes('Edg')) return 'Edge';
+        return 'Unknown';
     }
 
     async initiateCall(targetUsername) {
         try {
             // Check WebRTC support
             if (!this.isWebRTCSupported) {
-                throw new Error('WebRTC is not supported in your browser. Please use a modern browser (Chrome, Firefox, Safari, or Edge) with HTTPS.');
+                // Provide helpful error based on browser and protocol
+                const browser = this.detectBrowser();
+                const isFirefox = browser === 'Firefox';
+                const isHTTP = location.protocol === 'http:';
+                
+                let errorMessage = 'WebRTC is not supported in your browser.';
+                
+                if (isFirefox && isHTTP) {
+                    errorMessage = `Firefox requires HTTPS for voice calls.
+To enable voice calls:
+1. Use HTTPS (recommended for production)
+2. Or use Chrome for local testing (supports HTTP on localhost)
+Technical details: Firefox disables WebRTC on insecure (HTTP) connections for security reasons.`;
+                } else if (isHTTP) {
+                    errorMessage = `Voice calls require a secure connection (HTTPS).
+Your browser blocks WebRTC on HTTP for security.
+Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
+                }
+                
+                throw new Error(errorMessage);
             }
             
             console.log('Requesting microphone access...');
