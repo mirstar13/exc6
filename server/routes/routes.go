@@ -15,13 +15,13 @@ import (
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager, websocketManager websocket.Manager, callssrv *calls.CallService) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager, websocketManager websocket.Manager, callssrv *calls.CallService, csrfMiddleware fiber.Handler) {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
 	apiRoutes := NewAPIRoutes()
-	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv)
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv, csrfMiddleware)
 
 	// Register public routes (no auth required)
 	publicRoutes.Register(app)

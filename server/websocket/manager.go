@@ -55,7 +55,7 @@ type Manager struct {
 	Register   chan *Client
 	unRegister chan *Client
 	broadcast  chan *Message
-	mu         sync.RWMutex
+	mu         *sync.RWMutex
 	ctx        context.Context
 	cancel     context.CancelFunc
 }
@@ -69,6 +69,7 @@ func NewManager(ctx context.Context) *Manager {
 		Register:   make(chan *Client, 10),
 		unRegister: make(chan *Client, 10),
 		broadcast:  make(chan *Message, 1000),
+		mu:         &sync.RWMutex{},
 		ctx:        bgCtx,
 		cancel:     cancel,
 	}

@@ -74,7 +74,7 @@ func HandleLoadChatWindow(cs *chat.ChatService, qdb *db.Queries) fiber.Handler {
 	}
 }
 
-// HandleSendMessage - don't return HTML, let SSE handle message display
+// HandleSendMessage - don't return HTML, let WebSocket handle message display
 func HandleSendMessage(cs *chat.ChatService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		currentUser := c.Locals("username").(string)
@@ -103,7 +103,7 @@ func HandleSendMessage(cs *chat.ChatService) fiber.Handler {
 			return apperrors.NewInternalError("Failed to send message").WithInternal(err)
 		}
 
-		// Return 200 OK without HTML - SSE will handle displaying the message
+		// Return 200 OK without HTML - WebSocket will handle displaying the message via Redis Pub/Sub
 		return c.SendStatus(fiber.StatusOK)
 	}
 }

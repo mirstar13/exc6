@@ -16,13 +16,14 @@ import (
 
 // AuthRoutes handles all authenticated routes (requires valid session)
 type AuthRoutes struct {
-	db          *db.Queries
-	csrv        *chat.ChatService
-	fsrv        *friends.FriendService
-	gsrv        *groups.GroupService
-	smngr       *sessions.SessionManager
-	wsManager   *websocket.Manager
-	callService *calls.CallService
+	db             *db.Queries
+	csrv           *chat.ChatService
+	fsrv           *friends.FriendService
+	gsrv           *groups.GroupService
+	smngr          *sessions.SessionManager
+	wsManager      *websocket.Manager
+	callService    *calls.CallService
+	csrfMiddleware fiber.Handler
 }
 
 // NewAuthRoutes creates a new authenticated routes handler
@@ -34,15 +35,17 @@ func NewAuthRoutes(
 	smngr *sessions.SessionManager,
 	wsManager *websocket.Manager,
 	callService *calls.CallService,
+	csrfMiddleware fiber.Handler,
 ) *AuthRoutes {
 	return &AuthRoutes{
-		db:          db,
-		csrv:        csrv,
-		fsrv:        fsrv,
-		gsrv:        gsrv,
-		smngr:       smngr,
-		wsManager:   wsManager,
-		callService: callService,
+		db:             db,
+		csrv:           csrv,
+		fsrv:           fsrv,
+		gsrv:           gsrv,
+		smngr:          smngr,
+		wsManager:      wsManager,
+		callService:    callService,
+		csrfMiddleware: csrfMiddleware,
 	}
 }
 
@@ -50,11 +53,17 @@ func NewAuthRoutes(
 func (ar *AuthRoutes) Register(app *fiber.App) {
 	// Create authenticated route group
 	authed := app.Group("")
+
+	// 1. First, apply Auth Middleware (loads user into context)
 	authed.Use(auth.New(auth.Config{
 		DB:             ar.db,
 		SessionManager: ar.smngr,
 		Next:           nil,
 	}))
+
+	// 2. Then, apply CSRF Middleware (validates token)
+	// Now when it runs, c.Locals("username") will be populated, fixing "User: <nil>" logs
+	authed.Use(ar.csrfMiddleware)
 
 	// Dashboard - main chat interface
 	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.gsrv, ar.db))
@@ -81,10 +90,12 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 // registerWebSocketRoutes sets up WebSocket endpoints
 func (ar *AuthRoutes) registerWebSocketRoutes(router fiber.Router) {
 	// WebSocket upgrade check
-	router.Use("/ws", handlers.HandleWebSocketUpgrade(ar.wsManager, ar.csrv, ar.callService))
+	// Updated to pass GroupService and DB Queries
+	router.Use("/ws", handlers.HandleWebSocketUpgrade(ar.wsManager, ar.csrv, ar.callService, ar.gsrv, ar.db))
 
 	// WebSocket endpoint
-	router.Get("/ws/chat", handlers.HandleWebSocket(ar.wsManager, ar.csrv, ar.callService))
+	// Updated to pass GroupService and DB Queries
+	router.Get("/ws/chat", handlers.HandleWebSocket(ar.wsManager, ar.csrv, ar.callService, ar.gsrv, ar.db))
 }
 
 // registerChatRoutes sets up chat-related endpoints

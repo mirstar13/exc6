@@ -1,3 +1,5 @@
+// fileName: mirstar13/exc6/exc6-main/services/chat/chat_groups.go
+
 package chat
 
 import (
@@ -71,26 +73,21 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 		return msg, nil
 	}
 
-	// IMPORTANT: Use group-specific channel
-	channelName := fmt.Sprintf("chat:group:%s", groupID)
-
+	// Publish to global channel so WebSocket manager picks it up
 	publishCtx, publishCancel := context.WithTimeout(ctx, 2*time.Second)
 	defer publishCancel()
 
-	if err := cs.rdb.Publish(publishCtx, channelName, msgJSON).Err(); err != nil {
+	if err := cs.rdb.Publish(publishCtx, "chat:messages", msgJSON).Err(); err != nil {
 		logger.WithFields(map[string]interface{}{
 			"message_id": msg.MessageID,
-			"channel":    channelName,
 			"group_id":   groupID,
 			"error":      err.Error(),
-		}).Error("Failed to publish group message to Redis Pub/Sub")
-		// Don't fail - message is still queued for persistence
+		}).Error("Failed to publish group message to global Redis Pub/Sub")
 	} else {
 		logger.WithFields(map[string]interface{}{
 			"message_id": msg.MessageID,
-			"channel":    channelName,
 			"group_id":   groupID,
-		}).Debug("Group message published to Redis Pub/Sub successfully")
+		}).Debug("Group message published to global Redis Pub/Sub")
 	}
 
 	return msg, nil

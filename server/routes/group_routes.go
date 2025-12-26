@@ -1,3 +1,5 @@
+// fileName: mirstar13/exc6/exc6-main/server/routes/group_routes.go
+
 package routes
 
 import (
@@ -17,7 +19,6 @@ func RegisterGroupRoutes(router fiber.Router, qdb *db.Queries, csrv *chat.ChatSe
 	// Group chat (integrated with dashboard)
 	router.Get("/groups/:groupId/chat", handlers.HandleLoadGroupChatIntegrated(csrv, gsrv, qdb))
 	router.Post("/groups/:groupId/send", handlers.HandleSendGroupMessage(csrv, gsrv))
-	router.Get("/groups/:groupId/sse", handlers.HandleGroupSSE(csrv, gsrv, qdb))
 
 	// Group members management
 	router.Get("/groups/:groupId/members", handlers.HandleGroupMembersPartial(gsrv))

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"exc6/apperrors"
+	"exc6/db"
 	"exc6/pkg/logger"
 	_websocket "exc6/server/websocket"
 	"exc6/services/calls"
 	"exc6/services/chat"
+	"exc6/services/groups"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -16,7 +18,7 @@ import (
 )
 
 // HandleWebSocketUpgrade upgrades HTTP connection to WebSocket
-func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService) fiber.Handler {
+func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Check if it's a websocket upgrade request
 		if websocket.IsWebSocketUpgrade(c) {
@@ -28,7 +30,7 @@ func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatServic
 }
 
 // HandleWebSocket handles WebSocket connections for chat and calls
-func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService) fiber.Handler {
+func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
 	return websocket.New(func(conn *websocket.Conn) {
 		// Get username from locals (set by auth middleware)
 		username := conn.Locals("username").(string)
@@ -39,6 +41,20 @@ func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, call
 		// Register client
 		wsManager.Register <- client
 
+		// Fetch user's groups to filter incoming messages
+		ctxGroups, cancelGroups := context.WithTimeout(context.Background(), 5*time.Second)
+		userGroups, err := gsrv.GetUserGroups(ctxGroups, username)
+		cancelGroups()
+
+		allowedGroups := make(map[string]bool)
+		if err == nil {
+			for _, g := range userGroups {
+				allowedGroups[g.ID] = true
+			}
+		} else {
+			logger.WithError(err).Warn("Failed to fetch user groups for WebSocket")
+		}
+
 		// Subscribe to Redis Pub/Sub for chat messages
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -47,7 +63,7 @@ func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, call
 		defer pubsub.Close()
 
 		// Start message relay from Redis to WebSocket
-		go relayRedisToWebSocket(ctx, client, pubsub, username)
+		go relayRedisToWebSocket(ctx, client, pubsub, username, allowedGroups, qdb)
 
 		// Start read and write pumps
 		go client.WritePump()
@@ -58,7 +74,7 @@ func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, call
 }
 
 // relayRedisToWebSocket relays messages from Redis Pub/Sub to WebSocket
-func relayRedisToWebSocket(ctx context.Context, client *_websocket.Client, pubsub *redis.PubSub, username string) {
+func relayRedisToWebSocket(ctx context.Context, client *_websocket.Client, pubsub *redis.PubSub, username string, allowedGroups map[string]bool, qdb *db.Queries) {
 	ch := pubsub.Channel()
 
 	for {
@@ -75,8 +91,10 @@ func relayRedisToWebSocket(ctx context.Context, client *_websocket.Client, pubsu
 			}
 
 			// Filter messages for this user
+			// 1. Direct messages where user is sender or recipient
+			// 2. Group messages where user is a member of the group
 			isRelevant := (chatMsg.FromID == username || chatMsg.ToID == username) ||
-				(chatMsg.GroupID != "" && chatMsg.IsGroup)
+				(chatMsg.IsGroup && allowedGroups[chatMsg.GroupID])
 
 			if !isRelevant {
 				continue
@@ -95,6 +113,27 @@ func relayRedisToWebSocket(ctx context.Context, client *_websocket.Client, pubsu
 
 			if chatMsg.IsGroup {
 				wsMsg.Type = _websocket.MessageTypeGroupChat
+
+				// Enrich group message with sender info (icon) for the frontend
+				if chatMsg.FromID != username {
+					fetchCtx, fetchCancel := context.WithTimeout(ctx, 2*time.Second)
+					sender, err := qdb.GetUserByUsername(fetchCtx, chatMsg.FromID)
+					fetchCancel()
+
+					if err == nil {
+						data := map[string]interface{}{
+							"icon":        "",
+							"custom_icon": "",
+						}
+						if sender.Icon.Valid {
+							data["icon"] = sender.Icon.String
+						}
+						if sender.CustomIcon.Valid {
+							data["custom_icon"] = sender.CustomIcon.String
+						}
+						wsMsg.Data = data
+					}
+				}
 			}
 
 			// Send to client

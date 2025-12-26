@@ -177,100 +177,119 @@
             const input = document.getElementById('chat-input');
             const scrollWrapper = document.getElementById('scroll-wrapper');
             const messageList = document.getElementById('message-list');
-            const statusEl = document.getElementById('connection-status');
             
-            let eventSource = null;
-            let reconnectAttempts = 0;
-            const maxReconnectAttempts = 10;
+            let wsClient = null;
             let lastSender = null;
             
-            function getLastMessageId() {
-                const messages = messageList.querySelectorAll('[data-message-id]');
-                return messages.length > 0 ? messages[messages.length - 1].dataset.messageId : '';
+            // Initialize WebSocket for Group
+            function initWebSocket() {
+                // Reuse WebSocketClient class which handles reconnection
+                wsClient = new WebSocketClient(
+                    handleGroupMessage,
+                    null // No calls in group chat for now
+                );
+                wsClient.connect();
             }
-            
+
+            function handleGroupMessage(message) {
+                // Check if message is for this group
+                if (message.group_id !== groupId) return;
+                
+                // Render message
+                const messageHTML = renderMessage(message);
+                messageList.insertAdjacentHTML('beforeend', messageHTML);
+                scrollToBottom();
+            }
+
+            function renderMessage(message) {
+                const isMe = message.from === username;
+                const content = escapeHTML(message.content);
+                const timestamp = formatTime(message.timestamp);
+                
+                const showAvatar = message.from !== lastSender;
+                lastSender = message.from;
+
+                let html = '';
+
+                if (isMe) {
+                    html = `
+                        <div class="flex w-full justify-end ${showAvatar ? 'mt-3' : 'mt-0.5'}" data-message-id="${message.id}">
+                            <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-blue text-white ${showAvatar ? 'rounded-2xl rounded-tr-sm' : 'rounded-xl'}" style="word-break: break-word; overflow-wrap: break-word;">
+                                ${content}
+                                <div class="text-[10px] opacity-60 text-right mt-1 select-none text-blue-100">${timestamp}</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const iconClass = getIconClass(message.data?.icon || 'gradient-blue');
+                    const initial = message.from.charAt(0).toUpperCase();
+                    const customIcon = message.data?.custom_icon;
+
+                    html = `
+                        <div class="flex w-full justify-start ${showAvatar ? 'mt-3' : 'mt-0.5'}" data-message-id="${message.id}">
+                            <div class="flex items-start gap-2 max-w-[85%] md:max-w-[60%] lg:max-w-[500px]">
+                                ${showAvatar ? `
+                                    <div class="w-8 h-8 rounded-full ${customIcon ? 'overflow-hidden' : iconClass} flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                        ${customIcon ? `<img src="${customIcon}" class="w-full h-full object-cover">` : initial}
+                                    </div>
+                                ` : '<div class="w-8 h-8 shrink-0"></div>'}
+                                
+                                <div class="flex-1 min-w-0">
+                                    ${showAvatar ? `<div class="text-xs font-semibold text-signal-blue mb-0.5">${message.from}</div>` : ''}
+                                    <div class="px-4 py-2 text-[15px] leading-relaxed shadow-sm relative bg-signal-bubble text-signal-text-main ${showAvatar ? 'rounded-2xl rounded-tl-sm' : 'rounded-xl'}" style="word-break: break-word; overflow-wrap: break-word;">
+                                        ${content}
+                                        <div class="text-[10px] opacity-60 text-right mt-1 select-none text-signal-text-sub">${timestamp}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                return html;
+            }
+
+            function getIconClass(icon) {
+                 const iconClasses = {
+                    "gradient-blue":   "bg-gradient-to-br from-blue-500 to-blue-700",
+                    "gradient-purple": "bg-gradient-to-br from-purple-500 to-pink-600",
+                    "gradient-green":  "bg-gradient-to-br from-green-500 to-emerald-600",
+                    "gradient-orange": "bg-gradient-to-br from-orange-500 to-red-600",
+                    "gradient-cyan":   "bg-gradient-to-br from-cyan-500 to-blue-600",
+                    "gradient-rose":   "bg-gradient-to-br from-rose-500 to-pink-600",
+                    "gradient-indigo": "bg-gradient-to-br from-indigo-500 to-purple-600",
+                    "gradient-amber":  "bg-gradient-to-br from-amber-500 to-orange-600",
+                    "gradient-teal":   "bg-gradient-to-br from-teal-500 to-green-600",
+                    "gradient-slate":  "bg-gradient-to-br from-slate-600 to-gray-700",
+                    "solid-signal":    "bg-signal-blue",
+                    "solid-dark":      "bg-signal-surface border border-white/10",
+                    "solid-red":       "bg-red-600",
+                    "solid-emerald":   "bg-emerald-600",
+                    "solid-violet":    "bg-violet-600",
+                };
+                return iconClasses[icon] || iconClasses["gradient-blue"];
+            }
+
+            function escapeHTML(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            function formatTime(timestamp) {
+                if (!timestamp) return 'Now';
+                const date = new Date(timestamp * 1000);
+                const now = new Date();
+                
+                if (date.toDateString() === now.toDateString()) {
+                    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                }
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+
             function scrollToBottom() {
                 setTimeout(() => {
                     scrollWrapper.scrollTop = scrollWrapper.scrollHeight;
                 }, 50);
-            }
-            
-            function updateStatus(status, color = 'text-signal-text-sub') {
-                if (statusEl) {
-                    statusEl.textContent = status;
-                    statusEl.className = 'text-xs ' + color;
-                }
-            }
-
-            function formatMessageHTML(html, sender) {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html;
-                const messageDiv = tempDiv.firstElementChild;
-                
-                // Determine spacing based on sender
-                if (sender === lastSender) {
-                    messageDiv.classList.remove('mt-3');
-                    messageDiv.classList.add('mt-0.5');
-                } else {
-                    messageDiv.classList.remove('mt-0.5');
-                    messageDiv.classList.add('mt-3');
-                }
-                
-                lastSender = sender;
-                return messageDiv.outerHTML;
-            }
-            
-            function connectSSE() {
-                if (eventSource) eventSource.close();
-                
-                const lastMessageId = getLastMessageId();
-                const url = '/groups/' + groupId + '/sse' + (lastMessageId ? '?lastMessageId=' + lastMessageId : '');
-                
-                updateStatus('Connecting...', 'text-yellow-500');
-                eventSource = new EventSource(url);
-                
-                eventSource.addEventListener('connected', function(e) {
-                    updateStatus('Connected', 'text-green-500');
-                    reconnectAttempts = 0;
-                });
-                
-                eventSource.addEventListener('message', function(e) {
-                    // Extract sender from message HTML to determine spacing
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = e.data;
-                    const messageDiv = tempDiv.firstElementChild;
-                    
-                    // Check if it's from current user or extract sender
-                    const isMyMessage = messageDiv.classList.contains('justify-end');
-                    let sender;
-                    
-                    if (isMyMessage) {
-                        sender = username;
-                    } else {
-                        const senderEl = messageDiv.querySelector('.text-signal-blue');
-                        sender = senderEl ? senderEl.textContent : 'unknown';
-                    }
-                    
-                    const formattedHTML = formatMessageHTML(e.data, sender);
-                    messageList.insertAdjacentHTML('beforeend', formattedHTML);
-                    scrollToBottom();
-                });
-                
-                eventSource.addEventListener('ping', function(e) {
-                    console.log('SSE: Keepalive ping');
-                });
-                
-                eventSource.onerror = function(e) {
-                    updateStatus('Reconnecting...', 'text-yellow-500');
-                    eventSource.close();
-                    
-                    if (reconnectAttempts < maxReconnectAttempts) {
-                        reconnectAttempts++;
-                        setTimeout(connectSSE, Math.min(1000 * Math.pow(2, reconnectAttempts), 30000));
-                    } else {
-                        updateStatus('Disconnected', 'text-red-500');
-                    }
-                };
             }
             
             form.addEventListener('htmx:afterRequest', function(evt) {
@@ -280,7 +299,7 @@
                 }
             });
             
-            // Initialize last sender from existing messages
+            // Initialize last sender from existing DOM messages
             const messages = messageList.querySelectorAll('[data-message-id]');
             if (messages.length > 0) {
                 const lastMessage = messages[messages.length - 1];
@@ -295,7 +314,7 @@
             }
             
             scrollToBottom();
-            connectSSE();
+            initWebSocket();
             
             // Load members
             fetch('/groups/' + groupId + '/members')
@@ -305,7 +324,7 @@
                 });
             
             window.addEventListener('beforeunload', function() {
-                if (eventSource) eventSource.close();
+                if (wsClient) wsClient.close();
             });
         })();
         

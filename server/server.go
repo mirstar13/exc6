@@ -82,11 +82,13 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 
 	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
 
-	// This ensures tokens are available when validation happens
+	// This ensures tokens are available (in Locals and Cookies) when validation happens
+	// This remains global so tokens are generated/injected on all requests
 	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
 
-	// CSRF Protection Middleware (validation)
-	app.Use(csrf.New(csrf.Config{
+	// Prepare CSRF Protection Middleware (validation) but do not attach globally
+	// We will attach it to authenticated routes so it runs AFTER Auth middleware
+	csrfMiddleware := csrf.New(csrf.Config{
 		Storage:    csrfStorage,
 		KeyLookup:  "header:X-CSRF-Token",
 		CookieName: "csrf_token",
@@ -103,7 +105,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 				c.Method() == "HEAD" ||
 				c.Method() == "OPTIONS"
 		},
-	}))
+	})
 
 	// Setup favicon middleware
 	app.Use(favicon.New(favicon.Config{
@@ -161,8 +163,8 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		cfg:   cfg,
 	}
 
-	// Register all routes
-	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr, *websocketManager, callsSrv)
+	// Register all routes, passing the CSRF middleware
+	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr, *websocketManager, callsSrv, csrfMiddleware)
 
 	return srv, nil
 }
