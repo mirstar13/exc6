@@ -10,6 +10,8 @@ import (
 	"exc6/server/middleware/limiter"
 	"exc6/server/middleware/security"
 	"exc6/server/routes"
+	"exc6/server/websocket"
+	"exc6/services/calls"
 	"exc6/services/chat"
 	"exc6/services/friends"
 	"exc6/services/groups"
@@ -36,7 +38,7 @@ type Server struct {
 	cfg   *config.Config
 }
 
-func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager, fsrv *friends.FriendService, gsrv *groups.GroupService) (*Server, error) {
+func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat.ChatService, smngr *sessions.SessionManager, fsrv *friends.FriendService, gsrv *groups.GroupService, websocketManager *websocket.Manager, callsSrv *calls.CallService) (*Server, error) {
 	// Initialize template engine
 	engine := html.New(cfg.Server.ViewsDir, ".html")
 
@@ -160,7 +162,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	}
 
 	// Register all routes
-	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr)
+	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr, *websocketManager, callsSrv)
 
 	return srv, nil
 }

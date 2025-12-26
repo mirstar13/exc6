@@ -2,6 +2,8 @@ package routes
 
 import (
 	"exc6/db"
+	"exc6/server/websocket"
+	"exc6/services/calls"
 	"exc6/services/chat"
 	"exc6/services/friends"
 	"exc6/services/groups"
@@ -13,13 +15,13 @@ import (
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager, websocketManager websocket.Manager, callssrv *calls.CallService) {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
 	apiRoutes := NewAPIRoutes()
-	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr)
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv)
 
 	// Register public routes (no auth required)
 	publicRoutes.Register(app)

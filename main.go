@@ -7,6 +7,8 @@ import (
 	"exc6/db"
 	infraredis "exc6/infrastructure/redis"
 	"exc6/server"
+	"exc6/server/websocket"
+	"exc6/services/calls"
 	"exc6/services/chat"
 	"exc6/services/friends"
 	"exc6/services/groups"
@@ -78,8 +80,14 @@ func run() error {
 	gsrv := groups.NewGroupService(dbqueries)
 	log.Println("✓ Initialized group service")
 
+	websocketManager := websocket.NewManager(context.Background())
+	log.Println("✓ Initialized WebSocket manager")
+
+	callsSrv := calls.NewCallService(context.Background(), rdb)
+	log.Println("✓ Initialized call service")
+
 	// Create server
-	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr, fsrv, gsrv)
+	srv, err := server.NewServer(cfg, dbqueries, rdb, csrv, smngr, fsrv, gsrv, websocketManager, callsSrv)
 	if err != nil {
 		return fmt.Errorf("failed to create server; err: %w", err)
 	}
