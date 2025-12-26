@@ -180,8 +180,12 @@ class VoiceCallManager {
     }
     
     detectWebRTCSupport() {
-        // Check RTCPeerConnection
-        const hasRTCPeerConnection = typeof window.RTCPeerConnection !== 'undefined';
+        // Check RTCPeerConnection with browser prefixes
+        const hasRTCPeerConnection = !!(
+            window.RTCPeerConnection ||
+            window.webkitRTCPeerConnection ||
+            window.mozRTCPeerConnection
+        );
         
         // Check getUserMedia
         const hasGetUserMedia = !!(
