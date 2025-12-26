@@ -291,11 +291,14 @@ func (cs *CallService) GetCallHistory(username string, limit int) ([]*Call, erro
 
 // GetMissedCalls returns the list of missed calls for the user
 func (cs *CallService) GetMissedCalls(ctx context.Context, username string) ([]*Call, error) {
-	// For now, we filter recent history. A production app might use a separate list.
 	history, err := cs.GetCallHistory(username, 50)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get last seen timestamp
+	lastSeenKey := fmt.Sprintf("calls:seen:%s", username)
+	lastSeenVal, _ := cs.rdb.Get(ctx, lastSeenKey).Int64()
 
 	missed := make([]*Call, 0)
 	for _, call := range history {
@@ -303,11 +306,20 @@ func (cs *CallService) GetMissedCalls(ctx context.Context, username string) ([]*
 		// 1. User was the callee
 		// 2. Call was not answered (AnsweredAt is 0)
 		// 3. Call state is ended
+		// 4. Call ended AFTER the last time user marked calls as seen
 		if call.Callee == username && call.AnsweredAt == 0 && call.State == CallStateEnded {
-			missed = append(missed, call)
+			if call.EndedAt > lastSeenVal {
+				missed = append(missed, call)
+			}
 		}
 	}
 	return missed, nil
+}
+
+// MarkCallsSeen updates the timestamp for the last time calls were viewed
+func (cs *CallService) MarkCallsSeen(ctx context.Context, username string) error {
+	key := fmt.Sprintf("calls:seen:%s", username)
+	return cs.rdb.Set(ctx, key, time.Now().Unix(), 0).Err()
 }
 
 // saveCallToRedis saves call state to Redis

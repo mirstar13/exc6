@@ -478,6 +478,11 @@ func (cs *ChatService) MarkConversationRead(ctx context.Context, recipient, send
 	return cs.rdb.HDel(ctx, key, sender).Err()
 }
 
+func (cs *ChatService) MarkAllRead(ctx context.Context, username string) error {
+	key := fmt.Sprintf("chat:unread:%s", username)
+	return cs.rdb.Del(ctx, key).Err()
+}
+
 // Close performs graceful shutdown
 func (cs *ChatService) Close() error {
 	cs.shutdownOnce.Do(func() {

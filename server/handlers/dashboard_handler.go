@@ -14,6 +14,35 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// Reusable function to get notifications
+func getNotificationData(ctx context.Context, username string, fsrv *friends.FriendService, cs *chat.ChatService, callSrv *calls.CallService) (fiber.Map, int) {
+	// 1. Friend Requests
+	requests, err := fsrv.GetFriendRequests(ctx, username)
+	if err != nil {
+		requests = []friends.FriendInfo{}
+	}
+
+	// 2. Unread Messages
+	unreadMap, err := cs.GetUnreadMessages(ctx, username)
+	if err != nil {
+		unreadMap = make(map[string]int)
+	}
+
+	// 3. Missed Calls
+	missedCalls, err := callSrv.GetMissedCalls(ctx, username)
+	if err != nil {
+		missedCalls = []*calls.Call{}
+	}
+
+	total := len(requests) + len(unreadMap) + len(missedCalls)
+
+	return fiber.Map{
+		"Notifications":  requests,
+		"UnreadMessages": unreadMap,
+		"MissedCalls":    missedCalls,
+	}, total
+}
+
 func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs *chat.ChatService, callSrv *calls.CallService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
@@ -21,88 +50,42 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Get friends
+		// Get Friends & Groups
 		friendsList, err := fsrv.GetUserFriends(ctx, username)
 		if err != nil {
 			return err
 		}
-
-		// Get groups
 		groupsList, err := gsrv.GetUserGroups(ctx, username)
 		if err != nil {
-			// Log but don't fail - groups are optional
-			logger.WithError(err).Warn("Failed to fetch user groups")
 			groupsList = []groups.GroupInfo{}
 		}
 
-		// Get pending friend requests count for notification badge
-		requests, err := fsrv.GetFriendRequests(ctx, username)
-		if err != nil {
-			requests = []friends.FriendInfo{}
-		}
+		// Get Notifications
+		notifData, totalNotifications := getNotificationData(ctx, username, fsrv, cs, callSrv)
 
-		// Get Unread Messages
-		unreadMap, err := cs.GetUnreadMessages(ctx, username)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to fetch unread messages")
-			unreadMap = make(map[string]int)
-		}
-
-		// Get Missed Calls
-		missedCalls, err := callSrv.GetMissedCalls(ctx, username)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to fetch missed calls")
-			missedCalls = []*calls.Call{}
-		}
-
-		// Calculate total notifications
-		totalNotifications := len(requests) + len(unreadMap) + len(missedCalls)
-
-		// Get current user info for icon
+		// Get user info
 		user, err := qdb.GetUserByUsername(ctx, username)
 		if err != nil {
 			return err
 		}
 
-		// Extract string values for current user's icon
 		iconValue := ""
 		if user.Icon.Valid {
 			iconValue = user.Icon.String
 		}
-
 		customIconValue := ""
 		if user.CustomIcon.Valid {
 			customIconValue = user.CustomIcon.String
 		}
 
-		// Get CSRF token from context
 		csrfToken := ""
 		if token := c.Locals("csrf_token"); token != nil {
 			if tokenStr, ok := token.(string); ok {
 				csrfToken = tokenStr
-				logger.WithFields(map[string]interface{}{
-					"username":     username,
-					"token_length": len(csrfToken),
-				}).Info("Dashboard: CSRF token retrieved from locals")
-			} else {
-				logger.WithFields(map[string]interface{}{
-					"username":   username,
-					"token_type": fmt.Sprintf("%T", token),
-				}).Error("Dashboard: CSRF token in locals is not a string!")
 			}
-		} else {
-			logger.WithField("username", username).Error("Dashboard: CSRF token is nil in locals!")
 		}
 
-		// CRITICAL: Log if token is missing
-		if csrfToken == "" {
-			logger.WithFields(map[string]interface{}{
-				"username":   username,
-				"session_id": c.Cookies("session_id"),
-			}).Error("Dashboard: CSRF token is EMPTY! Template will not render meta tag!")
-		}
-
-		// Convert FriendInfo to ContactData
+		// Contacts logic
 		type ContactData struct {
 			Username    string
 			Icon        string
@@ -111,11 +94,9 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 			GroupID     string
 			UnreadCount int
 		}
-
-		// Combine friends and groups
 		contacts := make([]ContactData, 0, len(friendsList)+len(groupsList))
+		unreadMap := notifData["UnreadMessages"].(map[string]int)
 
-		// Add friends
 		for _, friend := range friendsList {
 			contacts = append(contacts, ContactData{
 				Username:    friend.Username,
@@ -125,8 +106,6 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 				UnreadCount: unreadMap[friend.Username],
 			})
 		}
-
-		// Add groups
 		for _, group := range groupsList {
 			contacts = append(contacts, ContactData{
 				Username:   group.Name,
@@ -143,10 +122,52 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 			"CustomIcon":          customIconValue,
 			"Contacts":            contacts,
 			"PendingRequestCount": totalNotifications,
-			"Notifications":       requests,
-			"MissedCalls":         missedCalls,
-			"UnreadMessages":      unreadMap,
+			"Notifications":       notifData["Notifications"],
+			"MissedCalls":         notifData["MissedCalls"],
+			"UnreadMessages":      notifData["UnreadMessages"],
 			"CSRFToken":           csrfToken,
+		})
+	}
+}
+
+// HandleGetNotifications returns just the notification list HTML
+func HandleGetNotifications(fsrv *friends.FriendService, cs *chat.ChatService, callSrv *calls.CallService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username := c.Locals("username").(string)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		notifData, total := getNotificationData(ctx, username, fsrv, cs, callSrv)
+
+		// Also send the count header so HTMX can update the badge if we wanted to use OOB
+		c.Set("X-Notification-Count", fmt.Sprintf("%d", total))
+
+		return c.Render("partials/notifications", notifData)
+	}
+}
+
+// HandleMarkNotificationsRead clears notifications
+func HandleMarkNotificationsRead(cs *chat.ChatService, callSrv *calls.CallService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username := c.Locals("username").(string)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		// 1. Mark all chats as read
+		if err := cs.MarkAllRead(ctx, username); err != nil {
+			logger.WithError(err).Error("Failed to mark chats read")
+		}
+
+		// 2. Mark calls as seen
+		if err := callSrv.MarkCallsSeen(ctx, username); err != nil {
+			logger.WithError(err).Error("Failed to mark calls seen")
+		}
+
+		// Return empty notification list to clear the UI immediately
+		return c.Render("partials/notifications", fiber.Map{
+			"Notifications":  []friends.FriendInfo{},
+			"UnreadMessages": map[string]int{},
+			"MissedCalls":    []*calls.Call{},
 		})
 	}
 }

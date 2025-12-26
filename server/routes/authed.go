@@ -83,6 +83,9 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	// Friend management routes
 	ar.registerFriendRoutes(authed)
 
+	authed.Get("/notifications", handlers.HandleGetNotifications(ar.fsrv, ar.csrv, ar.callService))
+	authed.Post("/notifications/mark-read", handlers.HandleMarkNotificationsRead(ar.csrv, ar.callService))
+
 	// Group management routes
 	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv)
 }
