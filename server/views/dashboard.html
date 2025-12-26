@@ -169,32 +169,35 @@
                             </div>
                         {{else}}
                             <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                    hx-get="/chat/{{.Username}}" hx-target="#main-chat-area" hx-swap="innerHTML">
+                                hx-get="/chat/{{.Username}}" 
+                                hx-target="#main-chat-area" 
+                                hx-swap="innerHTML"
+                                onclick="markItemRead(this)">
                                 {{if .CustomIcon}}
                                     <div class="relative w-12 h-12 shrink-0">
                                         <div class="w-12 h-12 rounded-full shadow-lg overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
                                         {{if gt .UnreadCount 0}}
-                                        <div class="absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
-                                            {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
-                                        </div>
+                                            <div class="unread-badge absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
+                                                {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
+                                            </div>
                                         {{end}}
                                     </div>
                                 {{else}}
                                     <div class="relative w-12 h-12 shrink-0">
                                         <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">{{slice .Username 0 1}}</div>
                                         {{if gt .UnreadCount 0}}
-                                        <div class="absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
-                                            {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
-                                        </div>
+                                            <div class="unread-badge absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
+                                                {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
+                                            </div>
                                         {{end}}
                                     </div>
                                 {{end}}
                                 <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
                                         <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
-                                        <span class="text-xs {{if gt .UnreadCount 0}}text-signal-blue font-medium{{else}}text-signal-text-sub{{end}}">Now</span>
+                                        <span class="unread-time text-xs {{if gt .UnreadCount 0}}text-signal-blue font-medium{{else}}text-signal-text-sub{{end}}">Now</span>
                                     </div>
-                                    <p class="text-sm {{if gt .UnreadCount 0}}text-white font-medium{{else}}text-signal-text-sub{{end}} truncate">
+                                    <p class="unread-text text-sm {{if gt .UnreadCount 0}}text-white font-medium{{else}}text-signal-text-sub{{end}} truncate">
                                         {{if gt .UnreadCount 0}}{{.UnreadCount}} unread messages{{else}}Tap to chat securely{{end}}
                                     </p>
                                 </div>
@@ -342,6 +345,30 @@
 
             window.voiceCall = new VoiceCallManager(wsClient, "{{.Username}}");
         });
+        
+        function markItemRead(element) {
+            // 1. Remove the red count badge
+            const badge = element.querySelector('.unread-badge');
+            if (badge) badge.remove();
+        
+            // 2. Reset the text styling (remove bold/white)
+            const text = element.querySelector('.unread-text');
+            if (text) {
+                text.classList.remove('text-white', 'font-medium');
+                text.classList.add('text-signal-text-sub');
+                // Optional: Update text content
+                if (text.textContent.includes('unread messages')) {
+                    text.textContent = 'Tap to chat securely';
+                }
+            }
+        
+            // 3. Reset the time styling
+            const time = element.querySelector('.unread-time');
+            if (time) {
+                time.classList.remove('text-signal-blue', 'font-medium');
+                time.classList.add('text-signal-text-sub');
+            }
+        }
     </script>
 </body>
 </html>
