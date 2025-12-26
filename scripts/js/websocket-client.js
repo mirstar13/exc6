@@ -1,7 +1,6 @@
 class WebSocketClient {
-    constructor(contactName, onMessage, onCallSignal) {
+    constructor(onMessage, onCallSignal) {
         this.ws = null;
-        this.contactName = contactName;
         this.onMessage = onMessage;
         this.onCallSignal = onCallSignal;
         this.reconnectAttempts = 0;
@@ -30,8 +29,6 @@ class WebSocketClient {
             console.log('WebSocket: Connected');
             this.reconnectAttempts = 0;
             this.updateStatus('Connected', 'text-green-500');
-            
-            // Send initial ping
             this.sendPing();
         };
 
@@ -98,7 +95,7 @@ class WebSocketClient {
             const message = {
                 type: type,
                 ...data,
-                timestamp: Date.now()
+                timestamp: Math.floor(Date.now() / 1000)
             };
             
             this.ws.send(JSON.stringify(message));
@@ -155,7 +152,7 @@ class WebSocketClient {
     }
 }
 
-// WebRTC Voice Call Manager
+// WebRTC Voice Call Manager with Firefox Support
 class VoiceCallManager {
     constructor(wsClient, username) {
         this.wsClient = wsClient;
@@ -167,33 +164,11 @@ class VoiceCallManager {
         this.currentCallPeer = null;
         this.isInitiator = false;
         
-        // Check WebRTC support - Fixed version
-        this.RTCPeerConnection = window.RTCPeerConnection || 
-                                 window.webkitRTCPeerConnection || 
-                                 window.mozRTCPeerConnection;
+        // FIXED: Proper WebRTC detection for all modern browsers including Firefox
+        this.isWebRTCSupported = this.detectWebRTCSupport();
         
-        if (!this.RTCPeerConnection) {
-            console.error('WebRTC is not supported in this browser');
-        }
-        
-        // Fixed getUserMedia detection for Firefox
-        this.getUserMedia = null;
-        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-            // Modern API (Firefox, Chrome, Safari, Edge)
-            this.getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        } else if (navigator.getUserMedia) {
-            // Legacy API
-            this.getUserMedia = navigator.getUserMedia.bind(navigator);
-        } else if (navigator.webkitGetUserMedia) {
-            // WebKit legacy
-            this.getUserMedia = navigator.webkitGetUserMedia.bind(navigator);
-        } else if (navigator.mozGetUserMedia) {
-            // Firefox legacy
-            this.getUserMedia = navigator.mozGetUserMedia.bind(navigator);
-        }
-        
-        if (!this.getUserMedia) {
-            console.error('getUserMedia is not supported in this browser');
+        if (!this.isWebRTCSupported) {
+            console.warn('WebRTC is not fully supported in this browser');
         }
         
         // ICE servers configuration (STUN server for NAT traversal)
@@ -205,36 +180,50 @@ class VoiceCallManager {
         };
     }
     
-    checkWebRTCSupport() {
-        // Check RTCPeerConnection
-        if (!this.RTCPeerConnection) {
-            throw new Error('WebRTC is not supported in your browser. Please use a modern browser (Chrome, Firefox, Safari, or Edge).');
-        }
+    // FIXED: Better WebRTC detection that works in Firefox
+    detectWebRTCSupport() {
+        // Check RTCPeerConnection (works in all modern browsers)
+        const hasRTCPeerConnection = !!(
+            window.RTCPeerConnection ||
+            window.webkitRTCPeerConnection ||
+            window.mozRTCPeerConnection
+        );
         
-        // Check getUserMedia
-        if (!this.getUserMedia) {
-            throw new Error('Microphone access API is not supported in your browser. Please update to the latest version.');
-        }
+        // Check getUserMedia (modern API)
+        const hasGetUserMedia = !!(
+            navigator.mediaDevices &&
+            navigator.mediaDevices.getUserMedia
+        );
         
-        // Check if we're in a secure context (HTTPS or localhost)
+        // Check if we're in a secure context (required for WebRTC)
         const isSecureContext = window.isSecureContext || 
                                 location.protocol === 'https:' || 
                                 ['localhost', '127.0.0.1'].includes(location.hostname);
         
-        if (!isSecureContext) {
-            throw new Error('Voice calls require HTTPS. Please access the site via HTTPS or localhost.');
+        const isSupported = hasRTCPeerConnection && hasGetUserMedia && isSecureContext;
+        
+        if (!isSupported) {
+            console.log('WebRTC Support Check:', {
+                RTCPeerConnection: hasRTCPeerConnection,
+                getUserMedia: hasGetUserMedia,
+                secureContext: isSecureContext
+            });
         }
+        
+        return isSupported;
     }
 
     async initiateCall(targetUsername) {
         try {
-            // Check WebRTC support first
-            this.checkWebRTCSupport();
+            // Check WebRTC support
+            if (!this.isWebRTCSupported) {
+                throw new Error('WebRTC is not supported in your browser. Please use a modern browser (Chrome, Firefox, Safari, or Edge) with HTTPS.');
+            }
             
             console.log('Requesting microphone access...');
             
-            // Get user media (microphone) - Use the stored function
-            this.localStream = await this.getUserMedia({
+            // Get user media (microphone)
+            this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: false
             });
@@ -242,7 +231,11 @@ class VoiceCallManager {
             console.log('Got local stream:', this.localStream);
             
             // Create peer connection
-            this.pc = new this.RTCPeerConnection(this.iceServers);
+            const RTCPeerConnection = window.RTCPeerConnection ||
+                                     window.webkitRTCPeerConnection ||
+                                     window.mozRTCPeerConnection;
+            
+            this.pc = new RTCPeerConnection(this.iceServers);
             this.setupPeerConnection();
             
             // Add local stream to peer connection
@@ -270,6 +263,17 @@ class VoiceCallManager {
             
             console.log('Call initiated:', data);
             
+            // Create and send offer
+            const offer = await this.pc.createOffer();
+            await this.pc.setLocalDescription(offer);
+            
+            // Send offer via WebSocket
+            this.wsClient.sendMessage('call_offer', {
+                call_id: this.currentCallId,
+                to: targetUsername,
+                sdp: offer.sdp
+            });
+            
             // Show calling UI
             this.showCallingUI(targetUsername);
             
@@ -294,13 +298,14 @@ class VoiceCallManager {
 
     async answerCall() {
         try {
-            // Check WebRTC support first
-            this.checkWebRTCSupport();
+            if (!this.isWebRTCSupported) {
+                throw new Error('WebRTC is not supported in your browser.');
+            }
             
             console.log('Requesting microphone access...');
             
             // Get user media
-            this.localStream = await this.getUserMedia({
+            this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: false
             });
@@ -308,7 +313,11 @@ class VoiceCallManager {
             console.log('Got local stream:', this.localStream);
             
             // Create peer connection
-            this.pc = new this.RTCPeerConnection(this.iceServers);
+            const RTCPeerConnection = window.RTCPeerConnection ||
+                                     window.webkitRTCPeerConnection ||
+                                     window.mozRTCPeerConnection;
+            
+            this.pc = new RTCPeerConnection(this.iceServers);
             this.setupPeerConnection();
             
             // Add local stream
@@ -435,7 +444,7 @@ class VoiceCallManager {
     async handleCallSignal(message) {
         switch (message.type) {
             case 'call_offer':
-                await this.handleIncomingCall(message.data);
+                await this.handleIncomingCall(message);
                 break;
                 
             case 'call_answer':
@@ -454,6 +463,17 @@ class VoiceCallManager {
                 console.log('Call is ringing');
                 break;
         }
+    }
+
+    async handleIncomingCall(message) {
+        this.currentCallId = message.data.call_id;
+        this.currentCallPeer = message.from;
+        
+        // Show incoming call UI
+        this.showIncomingCallUI(message.from);
+        
+        // Store the offer to use when user answers
+        this.pendingOffer = message.data.sdp;
     }
 
     async handleCallAnswer(message) {
@@ -490,14 +510,14 @@ class VoiceCallManager {
         this.cleanup();
         this.hideCallUI();
         
-        // Show notification
         alert(`Call ended by ${message.from}`);
     }
 
     showIncomingCallUI(caller) {
-        const modal = document.getElementById('incoming-call-modal');
+        let modal = document.getElementById('incoming-call-modal');
         if (!modal) {
-            this.createIncomingCallModal(caller);
+            modal = this.createIncomingCallModal(caller);
+            document.body.appendChild(modal);
         } else {
             document.getElementById('caller-name').textContent = caller;
             modal.classList.remove('hidden');
@@ -519,12 +539,12 @@ class VoiceCallManager {
                     <h3 id="caller-name" class="text-2xl font-bold text-signal-text-main mb-2">${caller}</h3>
                     <p class="text-signal-text-sub mb-8">Incoming voice call</p>
                     <div class="flex gap-4">
-                        <button onclick="voiceCall.answerCall()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl transition-all">
+                        <button onclick="window.voiceCall.answerCall()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl transition-all">
                             <svg class="w-6 h-6 inline-block" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"></path>
                             </svg>
                         </button>
-                        <button onclick="voiceCall.rejectCall()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl transition-all">
+                        <button onclick="window.voiceCall.rejectCall()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl transition-all">
                             <svg class="w-6 h-6 inline-block" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"></path>
                             </svg>
@@ -534,13 +554,18 @@ class VoiceCallManager {
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
-        document.body.appendChild(modal);
+        return modal;
     }
 
     showCallingUI(callee) {
-        const modal = document.getElementById('calling-modal') || this.createCallingModal(callee);
-        document.getElementById('callee-name').textContent = callee;
-        modal.classList.remove('hidden');
+        let modal = document.getElementById('calling-modal');
+        if (!modal) {
+            modal = this.createCallingModal(callee);
+            document.body.appendChild(modal);
+        } else {
+            document.getElementById('callee-name').textContent = callee;
+            modal.classList.remove('hidden');
+        }
     }
 
     createCallingModal(callee) {
@@ -557,19 +582,22 @@ class VoiceCallManager {
                     </div>
                     <h3 id="callee-name" class="text-2xl font-bold text-signal-text-main mb-2">${callee}</h3>
                     <p class="text-signal-text-sub mb-8">Calling...</p>
-                    <button onclick="voiceCall.endCall()" class="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl transition-all">
+                    <button onclick="window.voiceCall.endCall()" class="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl transition-all">
                         End Call
                     </button>
                 </div>
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
-        document.body.appendChild(modal);
         return modal;
     }
 
     showActiveCallUI() {
-        const modal = document.getElementById('active-call-modal') || this.createActiveCallModal();
+        let modal = document.getElementById('active-call-modal');
+        if (!modal) {
+            modal = this.createActiveCallModal();
+            document.body.appendChild(modal);
+        }
         modal.classList.remove('hidden');
         
         // Hide other modals
@@ -597,7 +625,7 @@ class VoiceCallManager {
                     </div>
                     <h3 class="text-2xl font-bold text-signal-text-main mb-2">${this.currentCallPeer}</h3>
                     <p id="call-timer" class="text-signal-text-sub mb-8">00:00</p>
-                    <button onclick="voiceCall.endCall()" class="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full transition-all">
+                    <button onclick="window.voiceCall.endCall()" class="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full transition-all">
                         <svg class="w-6 h-6 inline-block" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"></path>
                         </svg>
@@ -606,7 +634,6 @@ class VoiceCallManager {
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
-        document.body.appendChild(modal);
         return modal;
     }
 
@@ -666,6 +693,7 @@ class VoiceCallManager {
         this.currentCallPeer = null;
         this.isInitiator = false;
         this.remoteStream = null;
+        this.pendingOffer = null;
         
         // Stop call timer
         if (this.callTimerInterval) {
