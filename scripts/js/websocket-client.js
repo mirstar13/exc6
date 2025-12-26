@@ -167,7 +167,7 @@ class VoiceCallManager {
         this.currentCallPeer = null;
         this.isInitiator = false;
         
-        // Check WebRTC support
+        // Check WebRTC support - Fixed version
         this.RTCPeerConnection = window.RTCPeerConnection || 
                                  window.webkitRTCPeerConnection || 
                                  window.mozRTCPeerConnection;
@@ -176,11 +176,21 @@ class VoiceCallManager {
             console.error('WebRTC is not supported in this browser');
         }
         
-        // Check getUserMedia support
-        this.getUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices) ||
-                           navigator.getUserMedia?.bind(navigator) ||
-                           navigator.webkitGetUserMedia?.bind(navigator) ||
-                           navigator.mozGetUserMedia?.bind(navigator);
+        // Fixed getUserMedia detection for Firefox
+        this.getUserMedia = null;
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+            // Modern API (Firefox, Chrome, Safari, Edge)
+            this.getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        } else if (navigator.getUserMedia) {
+            // Legacy API
+            this.getUserMedia = navigator.getUserMedia.bind(navigator);
+        } else if (navigator.webkitGetUserMedia) {
+            // WebKit legacy
+            this.getUserMedia = navigator.webkitGetUserMedia.bind(navigator);
+        } else if (navigator.mozGetUserMedia) {
+            // Firefox legacy
+            this.getUserMedia = navigator.mozGetUserMedia.bind(navigator);
+        }
         
         if (!this.getUserMedia) {
             console.error('getUserMedia is not supported in this browser');
@@ -196,16 +206,23 @@ class VoiceCallManager {
     }
     
     checkWebRTCSupport() {
+        // Check RTCPeerConnection
         if (!this.RTCPeerConnection) {
-            throw new Error('WebRTC is not supported in your browser. Please use Chrome, Firefox, Safari, or Edge.');
-        }
-        if (!this.getUserMedia) {
-            throw new Error('Microphone access is not supported in your browser.');
+            throw new Error('WebRTC is not supported in your browser. Please use a modern browser (Chrome, Firefox, Safari, or Edge).');
         }
         
-        // Check if we're in a secure context
-        if (location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname)) {
-            throw new Error('Voice calls require HTTPS. Please access the site via HTTPS.');
+        // Check getUserMedia
+        if (!this.getUserMedia) {
+            throw new Error('Microphone access API is not supported in your browser. Please update to the latest version.');
+        }
+        
+        // Check if we're in a secure context (HTTPS or localhost)
+        const isSecureContext = window.isSecureContext || 
+                                location.protocol === 'https:' || 
+                                ['localhost', '127.0.0.1'].includes(location.hostname);
+        
+        if (!isSecureContext) {
+            throw new Error('Voice calls require HTTPS. Please access the site via HTTPS or localhost.');
         }
     }
 
@@ -214,19 +231,17 @@ class VoiceCallManager {
             // Check WebRTC support first
             this.checkWebRTCSupport();
             
-            // Get user media (microphone)
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                this.localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                    video: false
-                });
-            } else {
-                throw new Error('getUserMedia is not supported in your browser');
-            }
+            console.log('Requesting microphone access...');
+            
+            // Get user media (microphone) - Use the stored function
+            this.localStream = await this.getUserMedia({
+                audio: true,
+                video: false
+            });
             
             console.log('Got local stream:', this.localStream);
             
-            // Create peer connection using the polyfilled version
+            // Create peer connection
             this.pc = new this.RTCPeerConnection(this.iceServers);
             this.setupPeerConnection();
             
@@ -244,7 +259,8 @@ class VoiceCallManager {
             });
             
             if (!response.ok) {
-                throw new Error('Failed to initiate call');
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error?.message || 'Failed to initiate call');
             }
             
             const data = await response.json();
@@ -260,17 +276,20 @@ class VoiceCallManager {
         } catch (error) {
             console.error('Failed to initiate call:', error);
             this.endCall();
-            alert('Failed to start call: ' + error.message);
+            
+            // Show user-friendly error message
+            let errorMessage = error.message;
+            
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings.';
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                errorMessage = 'No microphone found. Please connect a microphone and try again.';
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                errorMessage = 'Microphone is already in use by another application.';
+            }
+            
+            alert('Failed to start call: ' + errorMessage);
         }
-    }
-
-    async handleIncomingCall(callData) {
-        this.currentCallId = callData.call_id;
-        this.currentCallPeer = callData.caller;
-        this.isInitiator = false;
-        
-        // Show incoming call UI
-        this.showIncomingCallUI(callData.caller);
     }
 
     async answerCall() {
@@ -278,17 +297,17 @@ class VoiceCallManager {
             // Check WebRTC support first
             this.checkWebRTCSupport();
             
-            // Get user media
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                this.localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                    video: false
-                });
-            } else {
-                throw new Error('getUserMedia is not supported in your browser');
-            }
+            console.log('Requesting microphone access...');
             
-            // Create peer connection using the polyfilled version
+            // Get user media
+            this.localStream = await this.getUserMedia({
+                audio: true,
+                video: false
+            });
+            
+            console.log('Got local stream:', this.localStream);
+            
+            // Create peer connection
             this.pc = new this.RTCPeerConnection(this.iceServers);
             this.setupPeerConnection();
             
@@ -325,6 +344,14 @@ class VoiceCallManager {
         } catch (error) {
             console.error('Failed to answer call:', error);
             this.endCall();
+            
+            let errorMessage = error.message;
+            
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                errorMessage = 'Microphone access denied. Please allow microphone access.';
+            }
+            
+            alert('Failed to answer call: ' + errorMessage);
         }
     }
 
