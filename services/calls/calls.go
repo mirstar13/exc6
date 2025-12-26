@@ -289,6 +289,27 @@ func (cs *CallService) GetCallHistory(username string, limit int) ([]*Call, erro
 	return calls, nil
 }
 
+// GetMissedCalls returns the list of missed calls for the user
+func (cs *CallService) GetMissedCalls(ctx context.Context, username string) ([]*Call, error) {
+	// For now, we filter recent history. A production app might use a separate list.
+	history, err := cs.GetCallHistory(username, 50)
+	if err != nil {
+		return nil, err
+	}
+
+	missed := make([]*Call, 0)
+	for _, call := range history {
+		// A call is "missed" if:
+		// 1. User was the callee
+		// 2. Call was not answered (AnsweredAt is 0)
+		// 3. Call state is ended
+		if call.Callee == username && call.AnsweredAt == 0 && call.State == CallStateEnded {
+			missed = append(missed, call)
+		}
+	}
+	return missed, nil
+}
+
 // saveCallToRedis saves call state to Redis
 func (cs *CallService) saveCallToRedis(call *Call) error {
 	ctx, cancel := context.WithTimeout(cs.ctx, 3*time.Second)

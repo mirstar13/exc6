@@ -14,6 +14,7 @@
     <script src="/scripts/js/htmx-csrf.js"></script>
     <script src="/scripts/js/websocket-client.js"></script>
     <script>
+        // ... (Keep existing tailwind config) ...
         tailwind.config = {
             safelist: [
                 'bg-gradient-to-br',
@@ -43,6 +44,7 @@
         }
     </script>
     <style>
+        /* ... (Keep existing styles) ... */
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -82,7 +84,7 @@
         <aside id="sidebar" class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20 relative">
             
             <div class="sidebar-header h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5 transition-all">
-               <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
+                <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
                     {{if .CustomIcon}}
                         <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
                             <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
@@ -103,12 +105,12 @@
                             <span class="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#181818]"></span>
                             {{end}}
                         </button>
-                    
+
                         <div id="notifications-dropdown" class="hidden absolute top-10 left-0 w-80 bg-signal-surface rounded-xl shadow-2xl border border-white/5 z-50 overflow-hidden transform transition-all duration-200 origin-top-left">
                             <div class="p-3 border-b border-white/5 bg-white/5">
                                 <h3 class="font-medium text-white text-sm">Notifications</h3>
                             </div>
-                            <div class="max-h-96 overflow-y-auto custom-scrollbar p-2 space-y-2" id="dashboard-notifications-list">
+                            <div class="max-h-80 overflow-y-auto custom-scrollbar p-2 space-y-2" id="dashboard-notifications-list">
                                 
                                 {{range .MissedCalls}}
                                 <div class="notification-item p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3 animate-[slide-up-fade_0.3s_ease-out]">
@@ -116,18 +118,18 @@
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.516l2.257-1.13a1 1 0 00.502-1.21L8.228 8.02A1 1 0 007.28 7.32H6.031c.198.33.407.653.626.965"></path></svg>
                                     </div>
                                     <div class="flex-1 min-w-0">
-                                        <p class="text-sm text-white font-medium truncate">Missed call from {{.caller}}</p>
+                                        <p class="text-sm text-white font-medium truncate">Missed call from {{.Caller}}</p>
                                         <p class="text-xs text-signal-text-sub">Tap to call back</p>
                                     </div>
-                                    <button onclick="window.voiceCall.initiateCall('{{.caller}}')" class="p-2 hover:bg-white/10 rounded-full text-signal-text-sub hover:text-green-400 transition-colors">
+                                    <button onclick="window.voiceCall.initiateCall('{{.Caller}}')" class="p-2 hover:bg-white/10 rounded-full text-signal-text-sub hover:text-green-400 transition-colors">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
                                     </button>
                                 </div>
                                 {{end}}
-                    
+
                                 {{range $user, $count := .UnreadMessages}}
                                 <div class="notification-item p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-3 animate-[slide-up-fade_0.3s_ease-out] cursor-pointer hover:bg-blue-500/20 transition-colors"
-                                     hx-get="/chat/{{$user}}" hx-target="#main-chat-area" hx-swap="innerHTML">
+                                        hx-get="/chat/{{$user}}" hx-target="#main-chat-area" hx-swap="innerHTML">
                                     <div class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                                     </div>
@@ -140,34 +142,36 @@
                                     </div>
                                 </div>
                                 {{end}}
-                    
-                                {{range .FriendRequests}}
-                                <div class="notification-item p-3 bg-white/5 rounded-lg flex items-center gap-3 animate-[slide-up-fade_0.3s_ease-out]">
-                                    {{if .CustomIcon}}
-                                        <div class="w-10 h-10 rounded-full overflow-hidden shrink-0 ring-1 ring-white/10">
-                                            <img src="{{.CustomIcon}}" class="w-full h-full object-cover">
-                                        </div>
-                                    {{else}}
-                                        <div class="w-10 h-10 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold shrink-0 ring-1 ring-white/10">
-                                            {{slice .Username 0 1}}
-                                        </div>
-                                    {{end}}
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-sm text-white font-medium truncate">{{.Username}}</p>
-                                        <p class="text-xs text-signal-text-sub">Sent a friend request</p>
-                                        <div class="flex gap-2 mt-2">
-                                            <button hx-post="/friends/accept/{{.Username}}" hx-target="#dashboard-notifications-list" class="px-3 py-1.5 bg-signal-blue hover:bg-signal-bluehover text-white text-xs font-medium rounded-lg transition-colors flex-1">Accept</button>
-                                            <button hx-delete="/friends/reject/{{.Username}}" hx-target="#dashboard-notifications-list" class="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-signal-text-sub hover:text-white text-xs font-medium rounded-lg transition-colors flex-1">Reject</button>
+
+                                {{if .Notifications}}
+                                    {{range .Notifications}}
+                                    <div class="notification-item p-3 bg-white/5 rounded-lg flex items-center gap-3 animate-[slide-up-fade_0.3s_ease-out]">
+                                        {{if .CustomIcon}}
+                                            <div class="w-10 h-10 rounded-full overflow-hidden shrink-0 ring-1 ring-white/10">
+                                                <img src="{{.CustomIcon}}" class="w-full h-full object-cover">
+                                            </div>
+                                        {{else}}
+                                            <div class="w-10 h-10 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold shrink-0 ring-1 ring-white/10">
+                                                {{slice .Username 0 1}}
+                                            </div>
+                                        {{end}}
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm text-white font-medium truncate">{{.Username}}</p>
+                                            <p class="text-xs text-signal-text-sub">Sent a friend request</p>
+                                            <div class="flex gap-2 mt-2">
+                                                <button hx-post="/friends/accept/{{.Username}}" hx-target="#dashboard-notifications-list" class="px-3 py-1.5 bg-signal-blue hover:bg-signal-bluehover text-white text-xs font-medium rounded-lg transition-colors flex-1">Accept</button>
+                                                <button hx-delete="/friends/reject/{{.Username}}" hx-target="#dashboard-notifications-list" class="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-signal-text-sub hover:text-white text-xs font-medium rounded-lg transition-colors flex-1">Reject</button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                    {{end}}
                                 {{end}}
-                    
-                                {{if and (eq (len .FriendRequests) 0) (eq (len .UnreadMessages) 0) (eq (len .MissedCalls) 0)}}
-                                <div class="p-8 text-center flex flex-col items-center justify-center opacity-50">
-                                    <svg class="w-12 h-12 mb-2 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                                    <span class="text-sm text-signal-text-sub">No new notifications</span>
-                                </div>
+
+                                {{if and (eq (len .Notifications) 0) (eq (len .UnreadMessages) 0) (eq (len .MissedCalls) 0)}}
+                                    <div class="p-8 text-center flex flex-col items-center justify-center opacity-50">
+                                        <svg class="w-12 h-12 mb-2 text-signal-text-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                                        <span class="text-sm text-signal-text-sub">No new notifications</span>
+                                    </div>
                                 {{end}}
                             </div>
                         </div>
@@ -180,7 +184,7 @@
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     </button>
                     <button hx-post="/logout" title="Sign Out" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-red-400 transition-all">
-                       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </button>
                 </div>
             </div>
@@ -197,7 +201,7 @@
                     <div class="px-2 contact-list-item">
                         {{if .IsGroup}}
                             <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                 hx-get="/groups/{{.GroupID}}/chat" hx-target="#main-chat-area" hx-swap="innerHTML">
+                                    hx-get="/groups/{{.GroupID}}/chat" hx-target="#main-chat-area" hx-swap="innerHTML">
                                 {{if .CustomIcon}}
                                     <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
                                 {{else}}
@@ -213,18 +217,34 @@
                             </div>
                         {{else}}
                             <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                 hx-get="/chat/{{.Username}}" hx-target="#main-chat-area" hx-swap="innerHTML">
+                                    hx-get="/chat/{{.Username}}" hx-target="#main-chat-area" hx-swap="innerHTML">
                                 {{if .CustomIcon}}
-                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
+                                    <div class="relative w-12 h-12 shrink-0">
+                                        <div class="w-12 h-12 rounded-full shadow-lg overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
+                                        {{if gt .UnreadCount 0}}
+                                        <div class="absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
+                                            {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
+                                        </div>
+                                        {{end}}
+                                    </div>
                                 {{else}}
-                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">{{slice .Username 0 1}}</div>
+                                    <div class="relative w-12 h-12 shrink-0">
+                                        <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">{{slice .Username 0 1}}</div>
+                                        {{if gt .UnreadCount 0}}
+                                        <div class="absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
+                                            {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
+                                        </div>
+                                        {{end}}
+                                    </div>
                                 {{end}}
                                 <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
                                     <div class="flex justify-between items-baseline mb-0.5">
                                         <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
-                                        <span class="text-xs text-signal-text-sub">Now</span>
+                                        <span class="text-xs {{if gt .UnreadCount 0}}text-signal-blue font-medium{{else}}text-signal-text-sub{{end}}">Now</span>
                                     </div>
-                                    <p class="text-sm text-signal-text-sub truncate">Tap to chat securely</p>
+                                    <p class="text-sm {{if gt .UnreadCount 0}}text-white font-medium{{else}}text-signal-text-sub{{end}} truncate">
+                                        {{if gt .UnreadCount 0}}{{.UnreadCount}} unread messages{{else}}Tap to chat securely{{end}}
+                                    </p>
                                 </div>
                             </div>
                         {{end}}
@@ -242,7 +262,7 @@
         <main id="main-chat-area" class="flex-1 bg-signal-bg h-full flex flex-col relative chat-placeholder">
             <div class="h-full flex flex-col items-center justify-center text-signal-text-sub">
                 <div class="w-24 h-24 bg-signal-surface rounded-full flex items-center justify-center mb-6 placeholder-icon">
-                   <svg class="w-10 h-10 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    <svg class="w-10 h-10 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                 </div>
                 <h2 class="text-xl font-medium mb-2 text-signal-text-main">Signal for Web</h2>
                 <p class="text-sm">Send and receive messages securely.</p>
@@ -251,18 +271,18 @@
     </div>
 
     <div id="group-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-       <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 modal-content"> <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
+        <div class="bg-signal-surface rounded-2xl p-8 max-w-md w-full mx-4 modal-content"> <h2 class="text-xl font-bold text-signal-text-main mb-6">Create Group</h2>
             <form hx-post="/groups/create" hx-target="#group-modal" hx-swap="outerHTML">
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-signal-text-main mb-2">Group Name</label>
                         <input type="text" name="name" required
-                               class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main focus:outline-none focus:border-signal-blue">
+                                class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main focus:outline-none focus:border-signal-blue">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-signal-text-main mb-2">Description (optional)</label>
                         <textarea name="description" rows="3"
-                                  class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main focus:outline-none focus:border-signal-blue"></textarea>
+                                    class="w-full bg-signal-bg border border-white/10 rounded-xl px-4 py-3 text-signal-text-main focus:outline-none focus:border-signal-blue"></textarea>
                     </div>
                     <div class="flex gap-3 pt-4">
                         <button type="submit" class="flex-1 bg-signal-blue hover:bg-signal-bluehover text-white py-2.5 rounded-xl transition-all">Create</button>

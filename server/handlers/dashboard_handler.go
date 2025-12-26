@@ -21,43 +21,44 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// 1. Get friends (Existing)
+		// Get friends
 		friendsList, err := fsrv.GetUserFriends(ctx, username)
 		if err != nil {
 			return err
 		}
 
-		// 2. Get groups (Existing)
+		// Get groups
 		groupsList, err := gsrv.GetUserGroups(ctx, username)
 		if err != nil {
+			// Log but don't fail - groups are optional
 			logger.WithError(err).Warn("Failed to fetch user groups")
 			groupsList = []groups.GroupInfo{}
 		}
 
-		// 3. Get Friend Requests (Existing)
+		// Get pending friend requests count for notification badge
 		requests, err := fsrv.GetFriendRequests(ctx, username)
 		if err != nil {
 			requests = []friends.FriendInfo{}
 		}
 
-		// 4. NEW: Get Unread Messages
+		// Get Unread Messages
 		unreadMap, err := cs.GetUnreadMessages(ctx, username)
 		if err != nil {
 			logger.WithError(err).Warn("Failed to fetch unread messages")
 			unreadMap = make(map[string]int)
 		}
 
-		// 5. NEW: Get Missed Calls
+		// Get Missed Calls
 		missedCalls, err := callSrv.GetMissedCalls(ctx, username)
 		if err != nil {
 			logger.WithError(err).Warn("Failed to fetch missed calls")
-			missedCalls = []map[string]interface{}{}
+			missedCalls = []*calls.Call{}
 		}
 
-		// Prepare Notification Counts
+		// Calculate total notifications
 		totalNotifications := len(requests) + len(unreadMap) + len(missedCalls)
 
-		// Get current user info (Existing)
+		// Get current user info for icon
 		user, err := qdb.GetUserByUsername(ctx, username)
 		if err != nil {
 			return err
@@ -79,12 +80,12 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 		if token := c.Locals("csrf_token"); token != nil {
 			if tokenStr, ok := token.(string); ok {
 				csrfToken = tokenStr
-				logger.WithFields(map[string]any{
+				logger.WithFields(map[string]interface{}{
 					"username":     username,
 					"token_length": len(csrfToken),
 				}).Info("Dashboard: CSRF token retrieved from locals")
 			} else {
-				logger.WithFields(map[string]any{
+				logger.WithFields(map[string]interface{}{
 					"username":   username,
 					"token_type": fmt.Sprintf("%T", token),
 				}).Error("Dashboard: CSRF token in locals is not a string!")
@@ -95,7 +96,7 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 
 		// CRITICAL: Log if token is missing
 		if csrfToken == "" {
-			logger.WithFields(map[string]any{
+			logger.WithFields(map[string]interface{}{
 				"username":   username,
 				"session_id": c.Cookies("session_id"),
 			}).Error("Dashboard: CSRF token is EMPTY! Template will not render meta tag!")
@@ -103,11 +104,12 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 
 		// Convert FriendInfo to ContactData
 		type ContactData struct {
-			Username   string
-			Icon       string
-			CustomIcon string
-			IsGroup    bool
-			GroupID    string
+			Username    string
+			Icon        string
+			CustomIcon  string
+			IsGroup     bool
+			GroupID     string
+			UnreadCount int
 		}
 
 		// Combine friends and groups
@@ -116,10 +118,11 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 		// Add friends
 		for _, friend := range friendsList {
 			contacts = append(contacts, ContactData{
-				Username:   friend.Username,
-				Icon:       friend.Icon,
-				CustomIcon: friend.CustomIcon,
-				IsGroup:    false,
+				Username:    friend.Username,
+				Icon:        friend.Icon,
+				CustomIcon:  friend.CustomIcon,
+				IsGroup:     false,
+				UnreadCount: unreadMap[friend.Username],
 			})
 		}
 
@@ -140,9 +143,9 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 			"CustomIcon":          customIconValue,
 			"Contacts":            contacts,
 			"PendingRequestCount": totalNotifications,
-			"FriendRequests":      requests,
-			"UnreadMessages":      unreadMap,
+			"Notifications":       requests,
 			"MissedCalls":         missedCalls,
+			"UnreadMessages":      unreadMap,
 			"CSRFToken":           csrfToken,
 		})
 	}
