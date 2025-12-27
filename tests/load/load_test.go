@@ -16,21 +16,26 @@ import (
 	"exc6/services/sessions"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/gofiber/contrib/websocket"
+	fastws "github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	"github.com/pressly/goose/v3"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -217,7 +222,7 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 				t.Logf("WebSocket connection failed for %s: %v", user.Username, err)
 				return
 			}
-			defer ws.Close()
+			defer ws.Close() // fastws.Conn has Close() method
 
 			atomic.AddInt64(&connectedCount, 1)
 
@@ -419,9 +424,16 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 	cfg, err := config.Load()
 	require.NoError(t, err, "Failed to load test config")
 
+	// Ensure that the ConnectionString is set correctly
+	dbString := os.Getenv("GOOSE_DBSTRING")
+	require.NotEmpty(t, dbString, "GOOSE_DBSTRING should not be empty")
+
 	// Setup database
-	dbConn, err := sql.Open("postgres", cfg.Database.ConnectionString)
-	require.NoError(t, err, "Failed to connect to test database")
+	dbConn, err := sql.Open("postgres", dbString)
+	require.NoError(t, err, "Failed to open database connection")
+
+	// Don't forget to defer closing the database connection
+	defer dbConn.Close()
 
 	// Run migrations
 	err = runMigrations(cfg.Database.ConnectionString)
@@ -488,10 +500,47 @@ func setupTestDB(t *testing.T) (*TestDB, func()) {
 }
 
 func runMigrations(connStr string) error {
-	cmd := exec.Command("goose", "-dir", "sql/schema", "postgres", connStr, "up")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Open database connection
+	migrateDB, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return fmt.Errorf("failed to open database for migrations: %w", err)
+	}
+	defer migrateDB.Close()
+
+	// Get current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Calculate migrations directory
+	projectRoot := filepath.Join(wd, "..", "..")
+	projectRoot, err = filepath.Abs(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	migrationsDir := filepath.Join(projectRoot, "sql", "schema")
+
+	// Verify directory exists
+	if _, err := os.Stat(migrationsDir); os.IsNotExist(err) {
+		return fmt.Errorf("migrations directory not found at: %s", migrationsDir)
+	}
+
+	log.Printf("Running migrations from: %s", migrationsDir)
+
+	// Set goose dialect
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
+	}
+
+	// Run migrations
+	if err := goose.Up(migrateDB, migrationsDir); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	log.Println("Migrations completed successfully")
+	return nil
 }
 
 func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
@@ -602,18 +651,43 @@ func sendMessage(app *TestApp, sessionID, recipient, content string) error {
 	return nil
 }
 
-func connectWebSocket(app *TestApp, sessionID string) (*websocket.Conn, error) {
-	// Start test server
-	ts := httptest.NewServer(app.App)
-	defer ts.Close()
+func startTestServer(app *TestApp) (string, func()) {
+	// Use a random available port
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Convert http:// to ws://
-	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws/chat"
+	addr := listener.Addr().String()
 
+	go func() {
+		if err := app.App.Listener(listener); err != nil {
+			log.Printf("Server error: %v", err)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond) // Wait for server to start
+
+	cleanup := func() {
+		app.App.Shutdown()
+	}
+
+	return addr, cleanup
+}
+
+func connectWebSocket(app *TestApp, sessionID string) (*fastws.Conn, error) {
+	addr, cleanup := startTestServer(app)
+	defer cleanup()
+
+	// Build WebSocket URL
+	wsURL := fmt.Sprintf("ws://%s/ws/chat", addr)
+
+	// Prepare headers with session cookie
 	header := http.Header{}
 	header.Add("Cookie", fmt.Sprintf("session_id=%s", sessionID))
 
-	dialer := websocket.Dialer{
+	// Use fasthttp websocket dialer (same as Fiber uses)
+	dialer := fastws.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
 
@@ -625,7 +699,7 @@ func connectWebSocket(app *TestApp, sessionID string) (*websocket.Conn, error) {
 	return conn, nil
 }
 
-func receiveMessage(ws *websocket.Conn) interface{} {
+func receiveMessage(ws *fastws.Conn) interface{} {
 	ws.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 
 	var msg map[string]interface{}
@@ -656,7 +730,6 @@ func queryGetFriendsList(testDB *TestDB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Get a random user
 	usernames, err := testDB.Queries.GetAllUsernames(ctx)
 	if err != nil {
 		return err
@@ -672,7 +745,8 @@ func queryGetFriendsList(testDB *TestDB) error {
 		return err
 	}
 
-	_, err = testDB.Queries.GetFriendsWithDetails(ctx, sql.NullUUID{UUID: user.ID, Valid: true})
+	// FIX: Change sql.NullUUID to uuid.NullUUID
+	_, err = testDB.Queries.GetFriendsWithDetails(ctx, uuid.NullUUID{UUID: user.ID, Valid: true})
 	return err
 }
 

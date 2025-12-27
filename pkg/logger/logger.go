@@ -46,7 +46,12 @@ func New(logfile string) *Logger {
 	if logfile != "" {
 		file, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to open log file: %v", err))
+			fmt.Printf("Warning: could not open log file %s trying fallback file: %v\n", logfile, err)
+			file, err = os.OpenFile("./log.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Printf("Warning: could not open fallback log file %s falling back to os.Stdout: %v\n", logfile, err)
+				file = os.Stdout
+			}
 		}
 
 		return &Logger{
