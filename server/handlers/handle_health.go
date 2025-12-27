@@ -229,8 +229,9 @@ func (h *HealthCheckHandler) checkChatService() CheckStatus {
 
 	// Check if there are too many failed messages
 	failureRate := float64(0)
-	if metrics["sent"] > 0 {
-		failureRate = float64(metrics["failed"]) / float64(metrics["sent"]) * 100
+	messages := metrics["messages"].(map[string]int64)
+	if messages["sent"] > 0 {
+		failureRate = float64(messages["failed"]) / float64(messages["sent"]) * 100
 	}
 
 	status := "healthy"

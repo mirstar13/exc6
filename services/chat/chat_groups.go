@@ -3,15 +3,17 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"exc6/pkg/breaker"
 	"exc6/pkg/logger"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
-// SendGroupMessage sends a message to a group
+// SendGroupMessage sends a message to a group with circuit breaker protection
 func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, content string) (*ChatMessage, error) {
 	msg := &ChatMessage{
 		MessageID: uuid.NewString(),
@@ -33,42 +35,75 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 		return nil, err
 	}
 
-	pipe := cs.rdb.Pipeline()
+	// Use circuit breaker for Redis operations
+	_, err = breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+		pipe := cs.rdb.Pipeline()
 
-	// 1. Cache message
-	cacheKey := fmt.Sprintf("chat:group:%s:messages", msg.GroupID)
-	pipe.ZAdd(ctx, cacheKey, redis.Z{
-		Score:  float64(msg.Timestamp),
-		Member: msgJSON,
+		// 1. Cache message
+		cacheKey := fmt.Sprintf("chat:group:%s:messages", msg.GroupID)
+		pipe.ZAdd(ctx, cacheKey, redis.Z{
+			Score:  float64(msg.Timestamp),
+			Member: msgJSON,
+		})
+		// Keep only the most recent messages
+		pipe.ZRemRangeByRank(ctx, cacheKey, 0, -RecentMessagesCacheSize-1)
+		pipe.Expire(ctx, cacheKey, MessageCacheTTL)
+
+		// 2. Publish
+		groupChannel := fmt.Sprintf("chat:group:%s", msg.GroupID)
+		pipe.Publish(ctx, groupChannel, msgJSON)
+
+		_, err := pipe.Exec(ctx)
+		return nil, err
 	})
-	// Keep only the most recent messages
-	pipe.ZRemRangeByRank(ctx, cacheKey, 0, -RecentMessagesCacheSize-1)
-	pipe.Expire(ctx, cacheKey, MessageCacheTTL)
 
-	// 2. Publish
-	groupChannel := fmt.Sprintf("chat:group:%s", msg.GroupID)
-	pipe.Publish(ctx, groupChannel, msgJSON)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"message_id": msg.MessageID,
+			"group_id":   groupID,
+			"error":      err.Error(),
+		}).Error("Circuit breaker: Failed to send group message to Redis")
 
-	if _, err := pipe.Exec(ctx); err != nil {
-		logger.WithError(err).Error("Failed to pipeline group message")
-		// Log error but generally we can proceed if it was queued in memory (though here we rely on Redis)
-		// For robustness, you might want to return the error
-		return nil, fmt.Errorf("failed to send group message: %w", err)
+		// Still try to buffer the message for Kafka persistence
+		select {
+		case cs.messageBuffer <- msg:
+			cs.incrementMetric("queued")
+		default:
+			cs.incrementMetric("failed")
+			return nil, fmt.Errorf("failed to send group message: %w", err)
+		}
+
+		return msg, nil
 	}
 
-	// 3. Buffer logic (optional, for metrics or persistence queue)
+	// 3. Buffer for Kafka persistence
 	select {
 	case cs.messageBuffer <- msg:
 		cs.incrementMetric("queued")
 	default:
-		// buffer full logic
-		cs.incrementMetric("queued_full")
+		// Buffer full - try to persist to Redis queue with circuit breaker
+		logger.WithFields(map[string]any{
+			"message_id":  msg.MessageID,
+			"buffer_size": len(cs.messageBuffer),
+		}).Warn("Message buffer full for group message")
+
+		if _, persistErr := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+			return nil, cs.persistMessageToQueue(ctx, msg)
+		}); persistErr != nil {
+			logger.WithFields(map[string]any{
+				"message_id": msg.MessageID,
+				"error":      persistErr.Error(),
+			}).Error("Circuit breaker: Failed to persist group message to queue")
+			cs.incrementMetric("failed")
+			return nil, fmt.Errorf("failed to persist group message: %w", persistErr)
+		}
+		cs.incrementMetric("queued")
 	}
 
 	return msg, nil
 }
 
-// GetGroupHistory retrieves message history for a group
+// GetGroupHistory retrieves message history for a group with circuit breaker
 func (cs *ChatService) GetGroupHistory(ctx context.Context, groupID string) ([]*ChatMessage, error) {
 	cacheKey := fmt.Sprintf("chat:group:%s:messages", groupID)
 
@@ -77,27 +112,77 @@ func (cs *ChatService) GetGroupHistory(ctx context.Context, groupID string) ([]*
 		"cache_key": cacheKey,
 	}).Debug("Fetching group message history")
 
-	results, err := cs.rdb.ZRange(ctx, cacheKey, 0, -1).Result()
+	result, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+		return cs.rdb.ZRange(ctx, cacheKey, 0, -1).Result()
+	})
+
 	if err != nil {
-		logger.WithError(err).Error("Failed to fetch group history from Redis")
-		return nil, err
+		logger.WithFields(map[string]interface{}{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("Circuit breaker: Failed to fetch group history from Redis")
+		// Return empty slice on failure rather than error
+		// This allows the UI to still load, just without history
+		return []*ChatMessage{}, nil
 	}
 
+	results := result.([]string)
 	messages := make([]*ChatMessage, 0, len(results))
-	for _, result := range results {
+	for _, res := range results {
 		var msg ChatMessage
-		if err := json.Unmarshal([]byte(result), &msg); err != nil {
+		if err := json.Unmarshal([]byte(res), &msg); err != nil {
 			logger.WithError(err).Warn("Failed to unmarshal group message from cache")
 			continue
 		}
 		messages = append(messages, &msg)
 	}
 
+	logger.WithFields(map[string]interface{}{
+		"group_id":      groupID,
+		"message_count": len(messages),
+	}).Debug("Retrieved group history")
+
 	return messages, nil
 }
 
-// SubscribeToGroup subscribes to group messages
+// SubscribeToGroup subscribes to group messages with circuit breaker
 func (cs *ChatService) SubscribeToGroup(ctx context.Context, groupID string) *redis.PubSub {
 	channelName := fmt.Sprintf("chat:group:%s", groupID)
-	return cs.rdb.Subscribe(ctx, channelName)
+
+	result, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+		return cs.rdb.Subscribe(ctx, channelName), nil
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"group_id": groupID,
+			"channel":  channelName,
+			"error":    err.Error(),
+		}).Error("Circuit breaker: Failed to subscribe to group channel")
+		return nil
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"group_id": groupID,
+		"channel":  channelName,
+	}).Debug("Subscribed to group channel")
+
+	return result.(*redis.PubSub)
+}
+
+// Additional helper: Check circuit breaker health for group operations
+func (cs *ChatService) IsGroupMessagingHealthy() bool {
+	redisState := cs.cbRedis.State()
+	kafkaState := cs.cbKafka.State()
+
+	// Both circuit breakers should be closed or half-open for healthy operation
+	return redisState != gobreaker.StateOpen && kafkaState != gobreaker.StateOpen
+}
+
+// GetGroupCircuitBreakerStatus returns the status of circuit breakers
+func (cs *ChatService) GetGroupCircuitBreakerStatus() map[string]string {
+	return map[string]string{
+		"redis": cs.cbRedis.State().String(),
+		"kafka": cs.cbKafka.State().String(),
+	}
 }
