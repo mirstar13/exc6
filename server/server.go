@@ -170,6 +170,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		Capacity:     cfg.RateLimit.Capacity,
 		RefillRate:   cfg.RateLimit.RefillRate,
 		RefillPeriod: cfg.RateLimit.RefillPeriod,
+		Storage:      limiter.NewRedisStorage(rdb, 5*time.Minute),
 		Next: func(c *fiber.Ctx) bool {
 			// Skip rate limiting for metrics endpoint
 			return c.Path() == "/metrics"

@@ -826,7 +826,7 @@ func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
 	users := make([]TestUser, count)
 
 	for i := 0; i < count; i++ {
-		username := fmt.Sprintf("loadtest_user_%d_%d", time.Now().Unix(), i)
+		username := fmt.Sprintf("loadtest_user_%d_%d", time.Now().UnixNano(), i)
 		password := "TestPass123!"
 
 		form := url.Values{}
