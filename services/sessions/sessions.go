@@ -80,27 +80,36 @@ func NewSessionManager(rdb *redis.Client) *SessionManager {
 }
 
 func (smngr *SessionManager) SaveSession(ctx context.Context, session *Session) error {
-	// Save to local cache with Lock
+	// 1. Save to local cache synchronously (Critical for immediate consistency on this node)
 	smngr.cacheMu.Lock()
 	smngr.cache[session.SessionID] = session
 	smngr.cacheMu.Unlock()
 
-	sessionKey := "session:" + session.SessionID
+	// 2. Persist to Redis asynchronously (Write-Behind)
+	// This removes Redis network RTT and pool contention from the login latency.
+	go func() {
+		// Use a detached background context with its own timeout
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
-		if err := smngr.rdb.HSet(ctx, sessionKey, session.Marshal()).Err(); err != nil {
+		sessionKey := "session:" + session.SessionID
+
+		_, err := breaker.ExecuteCtx(bgCtx, smngr.cb, func() (interface{}, error) {
+			// Use pipeline for efficiency (1 RTT instead of 2)
+			pipe := smngr.rdb.Pipeline()
+			pipe.HSet(bgCtx, sessionKey, session.Marshal())
+			pipe.Expire(bgCtx, sessionKey, 24*time.Hour)
+			_, err := pipe.Exec(bgCtx)
 			return nil, err
-		}
-		return nil, smngr.rdb.Expire(ctx, sessionKey, 24*time.Hour).Err()
-	})
+		})
 
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"session_id": session.SessionID,
-			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to save session to Redis (persisted locally)")
-		return err
-	}
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"session_id": session.SessionID,
+				"error":      err.Error(),
+			}).Error("Async session persistence to Redis failed (session remains in local cache)")
+		}
+	}()
 
 	return nil
 }
@@ -113,36 +122,17 @@ func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (
 		return smngr.rdb.HGetAll(ctx, sessionKey).Result()
 	})
 
-	// 2. Fallback to local cache if Redis fails
+	// 2. Fallback to local cache if Redis fails or returns error
 	if err != nil {
 		logger.WithField("error", err).Warn("Circuit breaker open/error: Checking local session cache")
-
-		smngr.cacheMu.RLock()
-		session, ok := smngr.cache[sessionID]
-		smngr.cacheMu.RUnlock()
-
-		if ok {
-			return session, nil
-		}
-
-		logger.WithFields(map[string]interface{}{
-			"session_id": sessionID,
-			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to get session (not in cache)")
-		return nil, err
+		return smngr.getFromLocalCache(sessionID)
 	}
 
 	sessionData := result.(map[string]string)
-	if len(sessionData) == 0 {
-		// Try cache if Redis returns nil
-		smngr.cacheMu.RLock()
-		session, ok := smngr.cache[sessionID]
-		smngr.cacheMu.RUnlock()
 
-		if ok {
-			return session, nil
-		}
-		return nil, nil
+	// 3. If Redis returns empty (might happen if async write hasn't finished yet), check local cache
+	if len(sessionData) == 0 {
+		return smngr.getFromLocalCache(sessionID)
 	}
 
 	session := &Session{}
@@ -150,12 +140,24 @@ func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (
 		return nil, err
 	}
 
-	// Update local cache on successful read (Read-Through) with Lock
+	// Update local cache on successful read (Read-Through)
 	smngr.cacheMu.Lock()
 	smngr.cache[sessionID] = session
 	smngr.cacheMu.Unlock()
 
 	return session, nil
+}
+
+// Helper to get from local cache
+func (smngr *SessionManager) getFromLocalCache(sessionID string) (*Session, error) {
+	smngr.cacheMu.RLock()
+	session, ok := smngr.cache[sessionID]
+	smngr.cacheMu.RUnlock()
+
+	if ok {
+		return session, nil
+	}
+	return nil, nil // Not found in either
 }
 
 func (smngr *SessionManager) ListActiveSessions(ctx context.Context) ([]*Session, error) {
@@ -199,10 +201,9 @@ func (smngr *SessionManager) ListActiveSessions(ctx context.Context) ([]*Session
 func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, field, value string) error {
 	sessionKey := "session:" + sessionID
 
-	// Optimistic update for local cache with Lock
+	// Optimistic update for local cache
 	smngr.cacheMu.Lock()
 	if s, ok := smngr.cache[sessionID]; ok {
-		// Note: We are modifying the struct in the map.
 		if field == "last_activity" {
 			if t, err := strconv.ParseInt(value, 10, 64); err == nil {
 				s.LastActivity = t
@@ -211,12 +212,18 @@ func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, 
 	}
 	smngr.cacheMu.Unlock()
 
+	// Update Redis async as well for performance, or keep sync if consistency is strict.
+	// For "last_activity" updates (heartbeats), async is usually preferred.
+	// For now keeping it sync based on original logic but pipeline could optimize it.
+
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		exists, err := smngr.rdb.Exists(ctx, sessionKey).Result()
 		if err != nil {
 			return nil, err
 		}
 		if exists == 0 {
+			// If not in Redis but in local, we might want to restore it?
+			// For now, respect Redis authority for updates.
 			return nil, fmt.Errorf("session not found: %s", sessionID)
 		}
 		return nil, smngr.rdb.HSet(ctx, sessionKey, field, value).Err()
@@ -237,7 +244,7 @@ func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, 
 func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string) error {
 	sessionKey := "session:" + sessionID
 
-	// Renew local cache with Lock
+	// Renew local cache
 	smngr.cacheMu.Lock()
 	if s, ok := smngr.cache[sessionID]; ok {
 		s.LastActivity = time.Now().Unix()
@@ -253,11 +260,11 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 			return nil, fmt.Errorf("session not found: %s", sessionID)
 		}
 
-		if err := smngr.rdb.HSet(ctx, sessionKey, "last_activity", time.Now().Unix()).Err(); err != nil {
-			return nil, err
-		}
-
-		return nil, smngr.rdb.Expire(ctx, sessionKey, 24*time.Hour).Err()
+		pipe := smngr.rdb.Pipeline()
+		pipe.HSet(ctx, sessionKey, "last_activity", time.Now().Unix())
+		pipe.Expire(ctx, sessionKey, 24*time.Hour)
+		_, err = pipe.Exec(ctx)
+		return nil, err
 	})
 
 	if err != nil {
@@ -272,22 +279,20 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 }
 
 func (smngr *SessionManager) DeleteSession(ctx context.Context, sessionID string) error {
-	// Delete from local cache with Lock
+	// Delete from local cache
 	smngr.cacheMu.Lock()
 	delete(smngr.cache, sessionID)
 	smngr.cacheMu.Unlock()
 
-	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
-		return nil, smngr.rdb.Del(ctx, "session:"+sessionID).Err()
-	})
+	// Fire and forget delete from Redis can be async too, but delete is usually fast.
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"session_id": sessionID,
-			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to delete session")
-		return err
-	}
+		breaker.ExecuteCtx(bgCtx, smngr.cb, func() (interface{}, error) {
+			return nil, smngr.rdb.Del(bgCtx, "session:"+sessionID).Err()
+		})
+	}()
 
 	return nil
 }

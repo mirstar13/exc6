@@ -30,8 +30,8 @@ var (
 		[]string{"name", "result"}, // result: success, failure, short_circuit
 	)
 
-	// Registry to map breaker instances to their names for metric labeling
-	breakerRegistry sync.Map
+	registryMu sync.RWMutex
+	registry   = make(map[*gobreaker.CircuitBreaker]string)
 )
 
 func init() {
@@ -104,8 +104,9 @@ func New(cfg Config) *gobreaker.CircuitBreaker {
 
 	cb := gobreaker.NewCircuitBreaker(settings)
 
-	// Register instance for lookups in Execute
-	breakerRegistry.Store(cb, cfg.Name)
+	registryMu.Lock()
+	registry[cb] = cfg.Name
+	registryMu.Unlock()
 
 	// Initialize state metric to Closed (0)
 	breakerState.WithLabelValues(cfg.Name).Set(0)
@@ -141,11 +142,11 @@ func IsRecoverableError(err error) bool {
 
 // Execute wraps circuit breaker execution with error classification and metrics
 func Execute(cb *gobreaker.CircuitBreaker, fn func() (interface{}, error)) (interface{}, error) {
-	// Retrieve name for metrics
-	var name string
-	if val, ok := breakerRegistry.Load(cb); ok {
-		name = val.(string)
-	} else {
+	registryMu.RLock()
+	name, ok := registry[cb]
+	registryMu.RUnlock()
+
+	if !ok {
 		name = "unknown"
 	}
 

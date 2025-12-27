@@ -3,7 +3,7 @@ package csrf
 import (
 	"context"
 	"exc6/apperrors"
-	"exc6/pkg/logger" // Make sure to import your logger
+	"exc6/pkg/logger"
 	"sync"
 	"time"
 
@@ -92,11 +92,11 @@ func (s *InMemoryStorage) cleanup() {
 }
 
 type RedisStorage struct {
-	client *redis.Client
-	prefix string
-	ttl    time.Duration
-	// [NEW] Local cache for fallback
-	cache sync.Map
+	client  *redis.Client
+	prefix  string
+	ttl     time.Duration
+	cacheMu sync.RWMutex
+	cache   map[string]tokenEntry
 }
 
 func NewRedisStorage(client *redis.Client, ttl time.Duration) *RedisStorage {
@@ -104,6 +104,7 @@ func NewRedisStorage(client *redis.Client, ttl time.Duration) *RedisStorage {
 		client: client,
 		prefix: "csrf:",
 		ttl:    ttl,
+		cache:  make(map[string]tokenEntry),
 	}
 }
 
@@ -116,20 +117,26 @@ func (s *RedisStorage) Get(key string) (string, error) {
 
 	// 2. If Redis works, update local cache (Read-Through) and return
 	if err == nil {
-		s.cache.Store(key, tokenEntry{
+		s.cacheMu.Lock()
+		s.cache[key] = tokenEntry{
 			value:      val,
 			expiration: time.Now().Add(s.ttl), // Refresh TTL estimate
-		})
+		}
+		s.cacheMu.Unlock()
 		return val, nil
 	}
 
 	// 3. If Redis fails (Down or Timeout), check local cache
 	if err != redis.Nil {
 		logger.WithField("error", err).Warn("CSRF Redis unavailable, checking local cache")
-		if entry, ok := s.cache.Load(key); ok {
-			e := entry.(tokenEntry)
-			if time.Now().Before(e.expiration) {
-				return e.value, nil
+
+		s.cacheMu.RLock()
+		entry, ok := s.cache[key]
+		s.cacheMu.RUnlock()
+
+		if ok {
+			if time.Now().Before(entry.expiration) {
+				return entry.value, nil
 			}
 		}
 	}
@@ -146,22 +153,22 @@ func (s *RedisStorage) Set(key string, value string, expiration time.Duration) e
 	defer cancel()
 
 	// 1. Always save to local cache
-	s.cache.Store(key, tokenEntry{
+	s.cacheMu.Lock()
+	s.cache[key] = tokenEntry{
 		value:      value,
 		expiration: time.Now().Add(expiration),
-	})
+	}
+	s.cacheMu.Unlock()
 
 	// 2. Try saving to Redis
 	err := s.client.Set(ctx, s.prefix+key, value, expiration).Err()
 
 	// 3. Log error but DO NOT fail the operation if Redis is down
-	// This ensures the user can still get a token and submit forms
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"key":   key,
 			"error": err,
 		}).Error("CSRF Redis write failed, relying on local cache")
-		// Return nil so the application proceeds successfully
 		return nil
 	}
 
@@ -173,7 +180,9 @@ func (s *RedisStorage) Delete(key string) error {
 	defer cancel()
 
 	// 1. Delete from local cache
-	s.cache.Delete(key)
+	s.cacheMu.Lock()
+	delete(s.cache, key)
+	s.cacheMu.Unlock()
 
 	// 2. Delete from Redis
 	return s.client.Del(ctx, s.prefix+key).Err()

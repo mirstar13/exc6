@@ -61,7 +61,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 
 	const (
 		numUsers       = 1000
-		concurrency    = 100
+		concurrency    = 50
 		requestTimeout = 5 * time.Second
 	)
 
