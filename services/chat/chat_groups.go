@@ -45,13 +45,11 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 			Score:  float64(msg.Timestamp),
 			Member: msgJSON,
 		})
-		// Keep only the most recent messages
 		pipe.ZRemRangeByRank(ctx, cacheKey, 0, -RecentMessagesCacheSize-1)
 		pipe.Expire(ctx, cacheKey, MessageCacheTTL)
 
-		// 2. Publish
-		groupChannel := fmt.Sprintf("chat:group:%s", msg.GroupID)
-		pipe.Publish(ctx, groupChannel, msgJSON)
+		// 2. Publish to global chat:messages channel for WebSocket relay
+		pipe.Publish(ctx, "chat:messages", msgJSON)
 
 		_, err := pipe.Exec(ctx)
 		return nil, err
@@ -63,17 +61,6 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 			"group_id":   groupID,
 			"error":      err.Error(),
 		}).Error("Circuit breaker: Failed to send group message to Redis")
-
-		// Still try to buffer the message for Kafka persistence
-		select {
-		case cs.messageBuffer <- msg:
-			cs.incrementMetric("queued")
-		default:
-			cs.incrementMetric("failed")
-			return nil, fmt.Errorf("failed to send group message: %w", err)
-		}
-
-		return msg, nil
 	}
 
 	// 3. Buffer for Kafka persistence
@@ -81,7 +68,6 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 	case cs.messageBuffer <- msg:
 		cs.incrementMetric("queued")
 	default:
-		// Buffer full - try to persist to Redis queue with circuit breaker
 		logger.WithFields(map[string]any{
 			"message_id":  msg.MessageID,
 			"buffer_size": len(cs.messageBuffer),
@@ -167,6 +153,53 @@ func (cs *ChatService) SubscribeToGroup(ctx context.Context, groupID string) *re
 	}).Debug("Subscribed to group channel")
 
 	return result.(*redis.PubSub)
+}
+
+// IncrementGroupUnreadCount increments unread count for a group
+func (cs *ChatService) IncrementGroupUnreadCount(ctx context.Context, groupID, senderUsername string, memberUsernames []string) error {
+	// Don't increment for the sender
+	for _, member := range memberUsernames {
+		if member == senderUsername {
+			continue
+		}
+
+		key := fmt.Sprintf("chat:unread:%s", member)
+		groupKey := fmt.Sprintf("group:%s", groupID)
+
+		_, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+			return nil, cs.rdb.HIncrBy(ctx, key, groupKey, 1).Err()
+		})
+
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"member":   member,
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Warn("Circuit breaker: Failed to increment group unread count")
+		}
+	}
+
+	return nil
+}
+
+// MarkGroupRead marks a group as read for a user
+func (cs *ChatService) MarkGroupRead(ctx context.Context, username, groupID string) error {
+	key := fmt.Sprintf("chat:unread:%s", username)
+	groupKey := fmt.Sprintf("group:%s", groupID)
+
+	_, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+		return nil, cs.rdb.HDel(ctx, key, groupKey).Err()
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Warn("Circuit breaker: Failed to mark group read")
+	}
+
+	return err
 }
 
 // Additional helper: Check circuit breaker health for group operations
