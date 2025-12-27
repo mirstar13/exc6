@@ -100,7 +100,7 @@ func (s *RedisStorage) Set(key string, bucket *TokenBucket) error {
 	if err != nil {
 		return err
 	}
-	return s.client.SetNX(s.ctx, "ratelimit:"+key, data, s.ttl).Err()
+	return s.client.Set(s.ctx, "ratelimit:"+key, data, s.ttl).Err()
 }
 
 func (s *RedisStorage) Delete(key string) error {

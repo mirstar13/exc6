@@ -107,6 +107,11 @@ func (l *Logger) WithError(err error) *Logger {
 	return l.WithField("error", err)
 }
 
+// [FIX] Added helper to easily trace request IDs
+func (l *Logger) WithRequestID(requestID string) *Logger {
+	return l.WithField("request_id", requestID)
+}
+
 // log formats and writes a log message
 func (l *Logger) log(level Level, msg string, args ...interface{}) {
 	if level < l.level {
@@ -195,4 +200,8 @@ func WithFields(fields map[string]interface{}) *Logger {
 
 func WithError(err error) *Logger {
 	return defaultLogger.WithError(err)
+}
+
+func WithRequestID(requestID string) *Logger {
+	return defaultLogger.WithRequestID(requestID)
 }

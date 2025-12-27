@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -115,6 +117,57 @@ func (q *Queries) GetFriends(ctx context.Context, userID uuid.NullUUID) ([]Frien
 			&i.FriendID,
 			&i.CreatedAt,
 			&i.Accepted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFriendsWithDetails = `-- name: GetFriendsWithDetails :many
+SELECT u.id, u.username, u.icon, u.custom_icon, f.accepted, f.created_at
+FROM friends f
+JOIN users u ON 
+    CASE 
+        WHEN f.user_id = $1 THEN f.friend_id = u.id
+        ELSE f.user_id = u.id
+    END
+WHERE (f.user_id = $1 OR f.friend_id = $1) 
+AND f.accepted = true
+`
+
+type GetFriendsWithDetailsRow struct {
+	ID         uuid.UUID
+	Username   string
+	Icon       sql.NullString
+	CustomIcon sql.NullString
+	Accepted   bool
+	CreatedAt  time.Time
+}
+
+func (q *Queries) GetFriendsWithDetails(ctx context.Context, userID uuid.NullUUID) ([]GetFriendsWithDetailsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getFriendsWithDetails, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetFriendsWithDetailsRow
+	for rows.Next() {
+		var i GetFriendsWithDetailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Icon,
+			&i.CustomIcon,
+			&i.Accepted,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

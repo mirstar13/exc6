@@ -4,6 +4,7 @@ import (
 	"context"
 	"exc6/apperrors"
 	"exc6/pkg/logger"
+	"exc6/services/groups"
 	"sync"
 	"time"
 
@@ -52,13 +53,14 @@ type Client struct {
 
 // Manager manages WebSocket connections
 type Manager struct {
-	clients    map[string]*Client // username -> client
-	Register   chan *Client
-	unRegister chan *Client
-	broadcast  chan *Message
-	mu         *sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
+	clients      map[string]*Client // username -> client
+	Register     chan *Client
+	unRegister   chan *Client
+	broadcast    chan *Message
+	mu           *sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	groupService *groups.GroupService
 }
 
 // NewManager creates a new WebSocket manager
@@ -77,6 +79,13 @@ func NewManager(ctx context.Context) *Manager {
 
 	go m.run()
 	return m
+}
+
+// [FIX] Method to inject group service for membership checks
+func (m *Manager) SetGroupService(gs *groups.GroupService) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.groupService = gs
 }
 
 // run handles client registration, unregistration, and message broadcasting
@@ -175,8 +184,29 @@ func (m *Manager) broadcastMessage(message *Message) {
 
 	// Broadcast to group
 	if message.GroupID != "" {
+		var allowedMembers map[string]bool
+
+		if m.groupService != nil {
+			// We use a background context here as this is an async broadcast
+			// Use the sender as the context user for the check, or verify via service
+			members, err := m.groupService.GetGroupMembers(context.Background(), message.GroupID, message.From)
+			if err == nil {
+				allowedMembers = make(map[string]bool)
+				for _, mem := range members {
+					allowedMembers[mem.Username] = true
+				}
+			} else {
+				logger.WithError(err).Warn("Failed to fetch group members for broadcast filtering")
+			}
+		}
+
 		// Get all group members and send to each
 		for username, client := range m.clients {
+			// [FIX] Skip if filtering is enabled and user is not a member
+			if allowedMembers != nil && !allowedMembers[username] {
+				continue
+			}
+
 			if username != message.From { // Don't send back to sender
 				select {
 				case client.Send <- message:
@@ -275,8 +305,6 @@ func (m *Manager) Close() {
 	close(m.unRegister)
 	close(m.broadcast)
 }
-
-// Client methods
 
 // NewClient creates a new WebSocket client
 func NewClient(username string, conn *websocket.Conn, manager *Manager) *Client {

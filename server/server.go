@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/favicon"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/template/html/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -69,6 +70,8 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		WriteTimeout: cfg.Server.WriteTimeout,
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
+
+	app.Use(requestid.New())
 
 	// Security headers middleware
 	app.Use(security.New(security.Config{

@@ -70,13 +70,17 @@ func New(config ...Config) fiber.Handler {
 
 		if bucket == nil {
 			bucket = NewTokenBucket(cfg.Capacity, cfg.RefillRate, cfg.RefillPeriod)
-			if err := cfg.Storage.Set(key, bucket); err != nil {
-				return err
-			}
+			// Don't save yet, wait until we take a token
 		}
 
 		// Try to take a token
-		if !bucket.Take(1) {
+		took := bucket.Take(1)
+
+		if err := cfg.Storage.Set(key, bucket); err != nil {
+			return err
+		}
+
+		if !took {
 			return cfg.LimitReachedHandler(c)
 		}
 

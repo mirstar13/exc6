@@ -36,45 +36,21 @@ func (fs *FriendService) GetUserFriends(ctx context.Context, username string) ([
 		return nil, apperrors.NewUserNotFound()
 	}
 
-	// Get friend relationships
-	friendships, err := fs.qdb.GetFriends(ctx, uuid.NullUUID{UUID: user.ID, Valid: true})
+	// [FIX] Use optimized query to avoid N+1 loop
+	rows, err := fs.qdb.GetFriendsWithDetails(ctx, uuid.NullUUID{UUID: user.ID, Valid: true})
 	if err != nil {
 		return nil, apperrors.NewDatabaseError("get friends", err)
 	}
 
-	// Collect friend IDs
-	friendIDs := make([]uuid.UUID, 0, len(friendships))
-	for _, f := range friendships {
-		// Determine which ID is the friend (not the current user)
-		if f.UserID.Valid && f.UserID.UUID == user.ID {
-			if f.FriendID.Valid {
-				friendIDs = append(friendIDs, f.FriendID.UUID)
-			}
-		} else if f.FriendID.Valid && f.FriendID.UUID == user.ID {
-			if f.UserID.Valid {
-				friendIDs = append(friendIDs, f.UserID.UUID)
-			}
-		}
-	}
-
-	if len(friendIDs) == 0 {
-		return []FriendInfo{}, nil
-	}
-
-	// Get user details for all friends
-	friends := make([]FriendInfo, 0, len(friendIDs))
-	for _, friendID := range friendIDs {
-		friendUser, err := fs.qdb.GetUserByID(ctx, friendID)
-		if err != nil {
-			continue // Skip if user not found
-		}
-
+	friends := make([]FriendInfo, 0, len(rows))
+	for _, row := range rows {
 		friends = append(friends, FriendInfo{
-			FriendID:   friendUser.ID.String(),
-			Username:   friendUser.Username,
-			Icon:       friendUser.Icon.String,
-			CustomIcon: friendUser.CustomIcon.String,
-			Accepted:   true,
+			FriendID:   row.ID.String(),
+			Username:   row.Username,
+			Icon:       row.Icon.String,
+			CustomIcon: row.CustomIcon.String,
+			Accepted:   row.Accepted,
+			CreatedAt:  row.CreatedAt,
 		})
 	}
 
