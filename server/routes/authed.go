@@ -86,6 +86,8 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	authed.Get("/notifications", handlers.HandleGetNotifications(ar.fsrv, ar.csrv, ar.callService))
 	authed.Post("/notifications/mark-read", handlers.HandleMarkNotificationsRead(ar.csrv, ar.callService))
 
+	authed.Get("/contacts", handlers.HandleGetContacts(ar.fsrv, ar.gsrv, ar.csrv, ar.callService))
+
 	// Group management routes
 	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv)
 }
@@ -141,10 +143,10 @@ func (ar *AuthRoutes) registerFriendRoutes(router fiber.Router) {
 	router.Get("/friends/search", handlers.HandleSearchUsers(ar.fsrv))
 
 	// Send friend request
-	router.Post("/friends/request/:username", handlers.HandleSendFriendRequest(ar.fsrv))
+	router.Post("/friends/request/:username", handlers.HandleSendFriendRequest(ar.fsrv, ar.wsManager))
 
 	// Accept friend request
-	router.Post("/friends/accept/:username", handlers.HandleAcceptFriendRequest(ar.fsrv))
+	router.Post("/friends/accept/:username", handlers.HandleAcceptFriendRequest(ar.fsrv, ar.wsManager))
 
 	// Reject friend request
 	router.Delete("/friends/reject/:username", handlers.HandleRejectFriendRequest(ar.fsrv))

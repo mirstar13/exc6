@@ -93,6 +93,7 @@ func buildCSP(cfg Config) string {
 	if cfg.Development {
 		csp += " 'unsafe-inline'" // Needed for Tailwind CDN config
 	}
+	csp += " 'unsafe-eval'" // Add this line: Required for HTMX to function
 	csp += "; "
 
 	// Style sources

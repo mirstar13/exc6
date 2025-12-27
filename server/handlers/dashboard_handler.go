@@ -14,6 +14,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// ContactData represents a user or group in the contact list
+type ContactData struct {
+	Username    string
+	Icon        string
+	CustomIcon  string
+	IsGroup     bool
+	GroupID     string
+	UnreadCount int
+}
+
 // Reusable function to get notifications
 func getNotificationData(ctx context.Context, username string, fsrv *friends.FriendService, cs *chat.ChatService, callSrv *calls.CallService) (fiber.Map, int) {
 	// 1. Friend Requests
@@ -86,14 +96,6 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 		}
 
 		// Contacts logic
-		type ContactData struct {
-			Username    string
-			Icon        string
-			CustomIcon  string
-			IsGroup     bool
-			GroupID     string
-			UnreadCount int
-		}
 		contacts := make([]ContactData, 0, len(friendsList)+len(groupsList))
 		unreadMap := notifData["UnreadMessages"].(map[string]int)
 
@@ -126,6 +128,56 @@ func HandleDashboard(fsrv *friends.FriendService, gsrv *groups.GroupService, cs 
 			"MissedCalls":         notifData["MissedCalls"],
 			"UnreadMessages":      notifData["UnreadMessages"],
 			"CSRFToken":           csrfToken,
+		})
+	}
+}
+
+// HandleGetContacts returns just the contact list HTML
+func HandleGetContacts(fsrv *friends.FriendService, gsrv *groups.GroupService, cs *chat.ChatService, callSrv *calls.CallService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		username := c.Locals("username").(string)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Get Friends & Groups
+		friendsList, err := fsrv.GetUserFriends(ctx, username)
+		if err != nil {
+			return err
+		}
+		groupsList, err := gsrv.GetUserGroups(ctx, username)
+		if err != nil {
+			groupsList = []groups.GroupInfo{}
+		}
+
+		// Get Notifications (for unread counts)
+		notifData, _ := getNotificationData(ctx, username, fsrv, cs, callSrv)
+
+		// Build Contacts
+		contacts := make([]ContactData, 0, len(friendsList)+len(groupsList))
+		unreadMap := notifData["UnreadMessages"].(map[string]int)
+
+		for _, friend := range friendsList {
+			contacts = append(contacts, ContactData{
+				Username:    friend.Username,
+				Icon:        friend.Icon,
+				CustomIcon:  friend.CustomIcon,
+				IsGroup:     false,
+				UnreadCount: unreadMap[friend.Username],
+			})
+		}
+		for _, group := range groupsList {
+			contacts = append(contacts, ContactData{
+				Username:   group.Name,
+				Icon:       group.Icon,
+				CustomIcon: group.CustomIcon,
+				IsGroup:    true,
+				GroupID:    group.ID,
+			})
+		}
+
+		return c.Render("partials/contact-list", fiber.Map{
+			"Contacts": contacts,
 		})
 	}
 }

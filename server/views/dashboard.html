@@ -148,64 +148,15 @@
                 </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto custom-scrollbar">
-                {{range .Contacts}}
-                    <div class="px-2 contact-list-item">
-                        {{if .IsGroup}}
-                            <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                    hx-get="/groups/{{.GroupID}}/chat" hx-target="#main-chat-area" hx-swap="innerHTML">
-                                {{if .CustomIcon}}
-                                    <div class="w-12 h-12 rounded-full shadow-lg shrink-0 overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
-                                {{else}}
-                                    <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg">{{slice .Username 0 1}}</div>
-                                {{end}}
-                                <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
-                                    <div class="flex justify-between items-baseline mb-0.5">
-                                        <div class="flex items-center gap-2"><h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3></div>
-                                        <span class="text-xs text-signal-text-sub">Now</span>
-                                    </div>
-                                    <p class="text-sm text-signal-text-sub truncate">Group chat</p>
-                                </div>
-                            </div>
-                        {{else}}
-                            <div class="contact-item px-3 py-3 rounded-lg cursor-pointer hover:bg-signal-surface transition-colors flex items-center gap-3 group" 
-                                hx-get="/chat/{{.Username}}" 
-                                hx-target="#main-chat-area" 
-                                hx-swap="innerHTML"
-                                onclick="markItemRead(this)">
-                                {{if .CustomIcon}}
-                                    <div class="relative w-12 h-12 shrink-0">
-                                        <div class="w-12 h-12 rounded-full shadow-lg overflow-hidden ring-2 ring-white/5"><img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover"></div>
-                                        {{if gt .UnreadCount 0}}
-                                            <div class="unread-badge absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
-                                                {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
-                                            </div>
-                                        {{end}}
-                                    </div>
-                                {{else}}
-                                    <div class="relative w-12 h-12 shrink-0">
-                                        <div class="w-12 h-12 {{iconClass .Icon}} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">{{slice .Username 0 1}}</div>
-                                        {{if gt .UnreadCount 0}}
-                                            <div class="unread-badge absolute -top-1 -right-1 w-5 h-5 bg-signal-blue text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-signal-sidebar">
-                                                {{if gt .UnreadCount 9}}9+{{else}}{{.UnreadCount}}{{end}}
-                                            </div>
-                                        {{end}}
-                                    </div>
-                                {{end}}
-                                <div class="sidebar-text flex-1 min-w-0 border-b border-white/5 pb-3 group-hover:border-transparent transition-colors">
-                                    <div class="flex justify-between items-baseline mb-0.5">
-                                        <h3 class="font-medium text-signal-text-main truncate">{{.Username}}</h3>
-                                        <span class="unread-time text-xs {{if gt .UnreadCount 0}}text-signal-blue font-medium{{else}}text-signal-text-sub{{end}}">Now</span>
-                                    </div>
-                                    <p class="unread-text text-sm {{if gt .UnreadCount 0}}text-white font-medium{{else}}text-signal-text-sub{{end}} truncate">
-                                        {{if gt .UnreadCount 0}}{{.UnreadCount}} unread messages{{else}}Tap to chat securely{{end}}
-                                    </p>
-                                </div>
-                            </div>
-                        {{end}}
-                    </div>
-                {{end}}
+            <div class="flex-1 overflow-y-auto custom-scrollbar" 
+                 id="contacts-list"
+                 hx-get="/contacts"
+                 hx-trigger="notifications-updated from:body"
+                 hx-swap="innerHTML">
+                {{template "partials/contact-list" .}}
             </div>
+
+            <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
 
             <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
                 <button onclick="toggleSidebar()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-signal-surface text-signal-text-sub transition-all">
@@ -330,8 +281,8 @@
 
             const wsClient = new WebSocketClient(
                 (message) => {
-                    // On incoming chat message
-                    if (message.type === 'chat' || message.type === 'group_chat') {
+                    // On incoming chat message or notification
+                    if (message.type === 'chat' || message.type === 'group_chat' || message.type === 'notification') {
                         // Dispatch event to update notification badge
                         document.body.dispatchEvent(new Event('notifications-updated'));
                     }

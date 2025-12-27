@@ -15,16 +15,17 @@ import (
 type MessageType string
 
 const (
-	MessageTypeChat        MessageType = "chat"
-	MessageTypeGroupChat   MessageType = "group_chat"
-	MessageTypeCallSignal  MessageType = "call_signal"
-	MessageTypeCallOffer   MessageType = "call_offer"
-	MessageTypeCallAnswer  MessageType = "call_answer"
-	MessageTypeCallICE     MessageType = "call_ice"
-	MessageTypeCallEnd     MessageType = "call_end"
-	MessageTypeCallRinging MessageType = "call_ringing"
-	MessageTypePing        MessageType = "ping"
-	MessageTypePong        MessageType = "pong"
+	MessageTypeChat         MessageType = "chat"
+	MessageTypeGroupChat    MessageType = "group_chat"
+	MessageTypeNotification MessageType = "notification"
+	MessageTypeCallSignal   MessageType = "call_signal"
+	MessageTypeCallOffer    MessageType = "call_offer"
+	MessageTypeCallAnswer   MessageType = "call_answer"
+	MessageTypeCallICE      MessageType = "call_ice"
+	MessageTypeCallEnd      MessageType = "call_end"
+	MessageTypeCallRinging  MessageType = "call_ringing"
+	MessageTypePing         MessageType = "ping"
+	MessageTypePong         MessageType = "pong"
 )
 
 // Message represents a WebSocket message

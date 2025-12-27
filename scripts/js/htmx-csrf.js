@@ -98,7 +98,8 @@
 
     // Debug: Log when HTMX makes requests
     document.addEventListener('htmx:beforeRequest', function(event) {
-        console.log('HTMX: Making request to', event.detail.path);
+        const path = event.detail.path || (event.detail.requestConfig && event.detail.requestConfig.path);
+        console.log('HTMX: Making request to', path);
     });
 
     console.log('HTMX CSRF protection initialized');

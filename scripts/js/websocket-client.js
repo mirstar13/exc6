@@ -66,7 +66,11 @@ class WebSocketClient {
                     this.onMessage(message);
                 }
                 break;
-                
+            case 'notification':
+                if (this.onMessage) {
+                    this.onMessage(message);
+                }
+                break;
             case 'call_offer':
             case 'call_answer':
             case 'call_ice':

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"exc6/apperrors"
+	"exc6/server/websocket"
 	"exc6/services/friends"
 	"time"
 
@@ -70,7 +71,7 @@ func HandleSearchUsers(fsrv *friends.FriendService) fiber.Handler {
 }
 
 // HandleSendFriendRequest sends a friend request
-func HandleSendFriendRequest(fsrv *friends.FriendService) fiber.Handler {
+func HandleSendFriendRequest(fsrv *friends.FriendService, wsManager *websocket.Manager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -89,6 +90,15 @@ func HandleSendFriendRequest(fsrv *friends.FriendService) fiber.Handler {
 			return err
 		}
 
+		// Send real-time notification
+		wsManager.SendToUser(targetUsername, &websocket.Message{
+			Type:      websocket.MessageTypeNotification,
+			From:      username,
+			To:        targetUsername,
+			Content:   "New friend request",
+			Timestamp: time.Now().Unix(),
+		})
+
 		// Return success message
 		return c.SendString(`
 			<div class="bg-green-500/10 border border-green-500/30 text-green-400 p-3 rounded-xl text-sm animate-fade-in">
@@ -99,7 +109,7 @@ func HandleSendFriendRequest(fsrv *friends.FriendService) fiber.Handler {
 }
 
 // HandleAcceptFriendRequest accepts a friend request
-func HandleAcceptFriendRequest(fsrv *friends.FriendService) fiber.Handler {
+func HandleAcceptFriendRequest(fsrv *friends.FriendService, wsManager *websocket.Manager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -117,6 +127,15 @@ func HandleAcceptFriendRequest(fsrv *friends.FriendService) fiber.Handler {
 		if err := fsrv.AcceptFriendRequest(ctx, username, requesterUsername); err != nil {
 			return err
 		}
+
+		// Send real-time notification to the requester
+		wsManager.SendToUser(requesterUsername, &websocket.Message{
+			Type:      websocket.MessageTypeNotification,
+			From:      username,
+			To:        requesterUsername,
+			Content:   "Friend request accepted",
+			Timestamp: time.Now().Unix(),
+		})
 
 		// Reload the friend requests list
 		requests, err := fsrv.GetFriendRequests(ctx, username)
