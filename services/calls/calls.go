@@ -3,6 +3,7 @@ package calls
 import (
 	"context"
 	"encoding/json"
+	"exc6/pkg/breaker"
 	"exc6/pkg/logger"
 	"fmt"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
 // CallState represents the state of a call
@@ -32,26 +34,16 @@ type Call struct {
 	StartedAt  int64     `json:"started_at"`
 	AnsweredAt int64     `json:"answered_at,omitempty"`
 	EndedAt    int64     `json:"ended_at,omitempty"`
-	Duration   int64     `json:"duration,omitempty"` // in seconds
+	Duration   int64     `json:"duration,omitempty"`
 	EndedBy    string    `json:"ended_by,omitempty"`
-}
-
-// SignalingMessage represents WebRTC signaling data
-type SignalingMessage struct {
-	Type      string         `json:"type"` // offer, answer, ice
-	CallID    string         `json:"call_id"`
-	From      string         `json:"from"`
-	To        string         `json:"to"`
-	SDP       string         `json:"sdp,omitempty"`
-	Candidate map[string]any `json:"candidate,omitempty"`
-	Timestamp int64          `json:"timestamp"`
 }
 
 // CallService manages voice calls and WebRTC signaling
 type CallService struct {
 	rdb         *redis.Client
-	activeCalls map[string]*Call  // callID -> Call
-	userCalls   map[string]string // username -> callID
+	cb          *gobreaker.CircuitBreaker
+	activeCalls map[string]*Call
+	userCalls   map[string]string
 	mu          sync.RWMutex
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -67,9 +59,16 @@ func NewCallService(ctx context.Context, rdb *redis.Client) *CallService {
 		userCalls:   make(map[string]string),
 		ctx:         bgCtx,
 		cancel:      cancel,
+		cb: breaker.New(breaker.Config{
+			Name:        "redis-calls",
+			MaxRequests: 5,
+			Interval:    60 * time.Second,
+			Timeout:     30 * time.Second,
+			Threshold:   0.5,
+			MinRequests: 5,
+		}),
 	}
 
-	// Start cleanup goroutine for stale calls
 	go cs.cleanupStaleCall()
 
 	return cs
@@ -100,9 +99,10 @@ func (cs *CallService) InitiateCall(caller, callee string) (*Call, error) {
 	cs.userCalls[caller] = call.ID
 	cs.userCalls[callee] = call.ID
 
-	// Persist to Redis
+	// Persist to Redis with circuit breaker
 	if err := cs.saveCallToRedis(call); err != nil {
-		logger.WithError(err).Error("Failed to save call to Redis")
+		logger.WithError(err).Error("Circuit breaker: Failed to save call to Redis")
+		// Don't fail the call initiation if Redis is down
 	}
 
 	logger.WithFields(map[string]any{
@@ -112,6 +112,167 @@ func (cs *CallService) InitiateCall(caller, callee string) (*Call, error) {
 	}).Info("Call initiated")
 
 	return call, nil
+}
+
+// saveCallToRedis saves call state to Redis with circuit breaker
+func (cs *CallService) saveCallToRedis(call *Call) error {
+	ctx, cancel := context.WithTimeout(cs.ctx, 3*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("call:%s", call.ID)
+
+	_, err := breaker.ExecuteCtx(ctx, cs.cb, func() (interface{}, error) {
+		data, err := json.Marshal(call)
+		if err != nil {
+			return nil, err
+		}
+		return nil, cs.rdb.Set(ctx, key, data, 24*time.Hour).Err()
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"call_id": call.ID,
+			"error":   err.Error(),
+		}).Error("Circuit breaker: Failed to save call")
+		return err
+	}
+
+	return nil
+}
+
+// saveCallHistory saves completed call to history with circuit breaker
+func (cs *CallService) saveCallHistory(call *Call) error {
+	if call.State != CallStateEnded {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(cs.ctx, 3*time.Second)
+	defer cancel()
+
+	_, err := breaker.ExecuteCtx(ctx, cs.cb, func() (interface{}, error) {
+		data, err := json.Marshal(call)
+		if err != nil {
+			return nil, err
+		}
+
+		pipe := cs.rdb.Pipeline()
+
+		callerKey := fmt.Sprintf("call_history:%s", call.Caller)
+		calleeKey := fmt.Sprintf("call_history:%s", call.Callee)
+
+		score := float64(call.EndedAt)
+
+		pipe.ZAdd(ctx, callerKey, redis.Z{Score: score, Member: data})
+		pipe.ZAdd(ctx, calleeKey, redis.Z{Score: score, Member: data})
+
+		// Keep only last 100 calls
+		pipe.ZRemRangeByRank(ctx, callerKey, 0, -101)
+		pipe.ZRemRangeByRank(ctx, calleeKey, 0, -101)
+
+		// Expire after 30 days
+		pipe.Expire(ctx, callerKey, 30*24*time.Hour)
+		pipe.Expire(ctx, calleeKey, 30*24*time.Hour)
+
+		_, err = pipe.Exec(ctx)
+		return nil, err
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"call_id": call.ID,
+			"error":   err.Error(),
+		}).Error("Circuit breaker: Failed to save call history")
+		return err
+	}
+
+	return nil
+}
+
+// GetCallHistory retrieves call history for a user with circuit breaker
+func (cs *CallService) GetCallHistory(username string, limit int) ([]*Call, error) {
+	ctx, cancel := context.WithTimeout(cs.ctx, 5*time.Second)
+	defer cancel()
+
+	key := fmt.Sprintf("call_history:%s", username)
+
+	result, err := breaker.ExecuteCtx(ctx, cs.cb, func() (interface{}, error) {
+		return cs.rdb.ZRevRangeByScore(ctx, key, &redis.ZRangeBy{
+			Min:    "-inf",
+			Max:    "+inf",
+			Offset: 0,
+			Count:  int64(limit),
+		}).Result()
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"error":    err.Error(),
+		}).Error("Circuit breaker: Failed to get call history")
+		return nil, err
+	}
+
+	results := result.([]string)
+	calls := make([]*Call, 0, len(results))
+	for _, res := range results {
+		var call Call
+		if err := json.Unmarshal([]byte(res), &call); err != nil {
+			logger.WithError(err).Warn("Failed to unmarshal call history")
+			continue
+		}
+		calls = append(calls, &call)
+	}
+
+	return calls, nil
+}
+
+// GetMissedCalls returns missed calls with circuit breaker
+func (cs *CallService) GetMissedCalls(ctx context.Context, username string) ([]*Call, error) {
+	history, err := cs.GetCallHistory(username, 50)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get last seen timestamp
+	lastSeenKey := fmt.Sprintf("calls:seen:%s", username)
+
+	result, err := breaker.ExecuteCtx(ctx, cs.cb, func() (interface{}, error) {
+		return cs.rdb.Get(ctx, lastSeenKey).Int64()
+	})
+
+	lastSeenVal := int64(0)
+	if err == nil {
+		lastSeenVal = result.(int64)
+	}
+
+	missed := make([]*Call, 0)
+	for _, call := range history {
+		if call.Callee == username && call.AnsweredAt == 0 && call.State == CallStateEnded {
+			if call.EndedAt > lastSeenVal {
+				missed = append(missed, call)
+			}
+		}
+	}
+	return missed, nil
+}
+
+// MarkCallsSeen updates the timestamp with circuit breaker
+func (cs *CallService) MarkCallsSeen(ctx context.Context, username string) error {
+	key := fmt.Sprintf("calls:seen:%s", username)
+
+	_, err := breaker.ExecuteCtx(ctx, cs.cb, func() (interface{}, error) {
+		return nil, cs.rdb.Set(ctx, key, time.Now().Unix(), 0).Err()
+	})
+
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"username": username,
+			"error":    err.Error(),
+		}).Error("Circuit breaker: Failed to mark calls as seen")
+		return err
+	}
+
+	return nil
 }
 
 // UpdateCallState updates the state of a call
@@ -127,10 +288,7 @@ func (cs *CallService) UpdateCallState(callID string, newState CallState) error 
 	oldState := call.State
 	call.State = newState
 
-	// Update timestamps based on state
 	switch newState {
-	case CallStateRinging:
-		// Call is ringing
 	case CallStateActive:
 		call.AnsweredAt = time.Now().Unix()
 	case CallStateEnded:
@@ -140,9 +298,9 @@ func (cs *CallService) UpdateCallState(callID string, newState CallState) error 
 		}
 	}
 
-	// Persist to Redis
+	// Persist with circuit breaker (non-blocking)
 	if err := cs.saveCallToRedis(call); err != nil {
-		logger.WithError(err).Error("Failed to update call in Redis")
+		logger.WithError(err).Warn("Failed to update call in Redis (continuing anyway)")
 	}
 
 	logger.WithFields(map[string]any{
@@ -257,123 +415,7 @@ func (cs *CallService) IsUserInCall(username string) bool {
 	return inCall
 }
 
-// GetCallHistory retrieves call history for a user
-func (cs *CallService) GetCallHistory(username string, limit int) ([]*Call, error) {
-	ctx, cancel := context.WithTimeout(cs.ctx, 5*time.Second)
-	defer cancel()
-
-	key := fmt.Sprintf("call_history:%s", username)
-
-	// Get recent calls from Redis sorted set
-	results, err := cs.rdb.ZRevRangeByScore(ctx, key, &redis.ZRangeBy{
-		Min:    "-inf",
-		Max:    "+inf",
-		Offset: 0,
-		Count:  int64(limit),
-	}).Result()
-
-	if err != nil {
-		return nil, err
-	}
-
-	calls := make([]*Call, 0, len(results))
-	for _, result := range results {
-		var call Call
-		if err := json.Unmarshal([]byte(result), &call); err != nil {
-			logger.WithError(err).Warn("Failed to unmarshal call history")
-			continue
-		}
-		calls = append(calls, &call)
-	}
-
-	return calls, nil
-}
-
-// GetMissedCalls returns the list of missed calls for the user
-func (cs *CallService) GetMissedCalls(ctx context.Context, username string) ([]*Call, error) {
-	history, err := cs.GetCallHistory(username, 50)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get last seen timestamp
-	lastSeenKey := fmt.Sprintf("calls:seen:%s", username)
-	lastSeenVal, _ := cs.rdb.Get(ctx, lastSeenKey).Int64()
-
-	missed := make([]*Call, 0)
-	for _, call := range history {
-		// A call is "missed" if:
-		// 1. User was the callee
-		// 2. Call was not answered (AnsweredAt is 0)
-		// 3. Call state is ended
-		// 4. Call ended AFTER the last time user marked calls as seen
-		if call.Callee == username && call.AnsweredAt == 0 && call.State == CallStateEnded {
-			if call.EndedAt > lastSeenVal {
-				missed = append(missed, call)
-			}
-		}
-	}
-	return missed, nil
-}
-
-// MarkCallsSeen updates the timestamp for the last time calls were viewed
-func (cs *CallService) MarkCallsSeen(ctx context.Context, username string) error {
-	key := fmt.Sprintf("calls:seen:%s", username)
-	return cs.rdb.Set(ctx, key, time.Now().Unix(), 0).Err()
-}
-
-// saveCallToRedis saves call state to Redis
-func (cs *CallService) saveCallToRedis(call *Call) error {
-	ctx, cancel := context.WithTimeout(cs.ctx, 3*time.Second)
-	defer cancel()
-
-	key := fmt.Sprintf("call:%s", call.ID)
-	data, err := json.Marshal(call)
-	if err != nil {
-		return err
-	}
-
-	return cs.rdb.Set(ctx, key, data, 24*time.Hour).Err()
-}
-
-// saveCallHistory saves completed call to history
-func (cs *CallService) saveCallHistory(call *Call) error {
-	if call.State != CallStateEnded {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(cs.ctx, 3*time.Second)
-	defer cancel()
-
-	data, err := json.Marshal(call)
-	if err != nil {
-		return err
-	}
-
-	// Save to both caller and callee history
-	pipe := cs.rdb.Pipeline()
-
-	callerKey := fmt.Sprintf("call_history:%s", call.Caller)
-	calleeKey := fmt.Sprintf("call_history:%s", call.Callee)
-
-	score := float64(call.EndedAt)
-
-	pipe.ZAdd(ctx, callerKey, redis.Z{Score: score, Member: data})
-	pipe.ZAdd(ctx, calleeKey, redis.Z{Score: score, Member: data})
-
-	// Keep only last 100 calls
-	pipe.ZRemRangeByRank(ctx, callerKey, 0, -101)
-	pipe.ZRemRangeByRank(ctx, calleeKey, 0, -101)
-
-	// Expire after 30 days
-	pipe.Expire(ctx, callerKey, 30*24*time.Hour)
-	pipe.Expire(ctx, calleeKey, 30*24*time.Hour)
-
-	_, err = pipe.Exec(ctx)
-	return err
-}
-
-// cleanupStaleCalls removes calls that have been in initiating/ringing state too long
+// cleanupStaleCalls removes stale calls
 func (cs *CallService) cleanupStaleCall() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -385,7 +427,6 @@ func (cs *CallService) cleanupStaleCall() {
 			now := time.Now().Unix()
 
 			for callID, call := range cs.activeCalls {
-				// If call has been ringing for more than 60 seconds, end it
 				if call.State == CallStateRinging || call.State == CallStateInitiating {
 					if now-call.StartedAt > 60 {
 						logger.WithFields(map[string]any{
@@ -415,14 +456,26 @@ func (cs *CallService) cleanupStaleCall() {
 	}
 }
 
-// GetStats returns call service statistics
+// GetMetrics returns call service and circuit breaker metrics
 func (cs *CallService) GetStats() map[string]any {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
+	// Get circuit breaker metrics
+	cbState := cs.cb.State()
+	cbCounts := cs.cb.Counts()
+
 	return map[string]any{
 		"active_calls":  len(cs.activeCalls),
 		"users_in_call": len(cs.userCalls),
+		"circuit_breaker": map[string]interface{}{
+			"state":                 cbState.String(),
+			"total_requests":        cbCounts.Requests,
+			"total_successes":       cbCounts.TotalSuccesses,
+			"total_failures":        cbCounts.TotalFailures,
+			"consecutive_successes": cbCounts.ConsecutiveSuccesses,
+			"consecutive_failures":  cbCounts.ConsecutiveFailures,
+		},
 	}
 }
 
