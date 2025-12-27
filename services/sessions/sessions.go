@@ -6,6 +6,7 @@ import (
 	"exc6/pkg/logger"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -58,6 +59,9 @@ func (s *Session) Unmarshal(data map[string]string) error {
 type SessionManager struct {
 	rdb *redis.Client
 	cb  *gobreaker.CircuitBreaker
+	// Use Mutex+Map instead of sync.Map to avoid Go 1.24 HashTrieMap panic
+	cache   map[string]*Session
+	cacheMu sync.RWMutex
 }
 
 func NewSessionManager(rdb *redis.Client) *SessionManager {
@@ -71,10 +75,16 @@ func NewSessionManager(rdb *redis.Client) *SessionManager {
 			Threshold:   0.5,
 			MinRequests: 5,
 		}),
+		cache: make(map[string]*Session),
 	}
 }
 
 func (smngr *SessionManager) SaveSession(ctx context.Context, session *Session) error {
+	// Save to local cache with Lock
+	smngr.cacheMu.Lock()
+	smngr.cache[session.SessionID] = session
+	smngr.cacheMu.Unlock()
+
 	sessionKey := "session:" + session.SessionID
 
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
@@ -88,7 +98,7 @@ func (smngr *SessionManager) SaveSession(ctx context.Context, session *Session) 
 		logger.WithFields(map[string]interface{}{
 			"session_id": session.SessionID,
 			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to save session")
+		}).Error("Circuit breaker: Failed to save session to Redis (persisted locally)")
 		return err
 	}
 
@@ -98,20 +108,40 @@ func (smngr *SessionManager) SaveSession(ctx context.Context, session *Session) 
 func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (*Session, error) {
 	sessionKey := "session:" + sessionID
 
+	// 1. Try to fetch from Redis
 	result, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		return smngr.rdb.HGetAll(ctx, sessionKey).Result()
 	})
 
+	// 2. Fallback to local cache if Redis fails
 	if err != nil {
+		logger.WithField("error", err).Warn("Circuit breaker open/error: Checking local session cache")
+
+		smngr.cacheMu.RLock()
+		session, ok := smngr.cache[sessionID]
+		smngr.cacheMu.RUnlock()
+
+		if ok {
+			return session, nil
+		}
+
 		logger.WithFields(map[string]interface{}{
 			"session_id": sessionID,
 			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to get session")
+		}).Error("Circuit breaker: Failed to get session (not in cache)")
 		return nil, err
 	}
 
 	sessionData := result.(map[string]string)
 	if len(sessionData) == 0 {
+		// Try cache if Redis returns nil
+		smngr.cacheMu.RLock()
+		session, ok := smngr.cache[sessionID]
+		smngr.cacheMu.RUnlock()
+
+		if ok {
+			return session, nil
+		}
 		return nil, nil
 	}
 
@@ -119,6 +149,11 @@ func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (
 	if err := session.Unmarshal(sessionData); err != nil {
 		return nil, err
 	}
+
+	// Update local cache on successful read (Read-Through) with Lock
+	smngr.cacheMu.Lock()
+	smngr.cache[sessionID] = session
+	smngr.cacheMu.Unlock()
 
 	return session, nil
 }
@@ -164,6 +199,18 @@ func (smngr *SessionManager) ListActiveSessions(ctx context.Context) ([]*Session
 func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, field, value string) error {
 	sessionKey := "session:" + sessionID
 
+	// Optimistic update for local cache with Lock
+	smngr.cacheMu.Lock()
+	if s, ok := smngr.cache[sessionID]; ok {
+		// Note: We are modifying the struct in the map.
+		if field == "last_activity" {
+			if t, err := strconv.ParseInt(value, 10, 64); err == nil {
+				s.LastActivity = t
+			}
+		}
+	}
+	smngr.cacheMu.Unlock()
+
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		exists, err := smngr.rdb.Exists(ctx, sessionKey).Result()
 		if err != nil {
@@ -190,6 +237,13 @@ func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, 
 func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string) error {
 	sessionKey := "session:" + sessionID
 
+	// Renew local cache with Lock
+	smngr.cacheMu.Lock()
+	if s, ok := smngr.cache[sessionID]; ok {
+		s.LastActivity = time.Now().Unix()
+	}
+	smngr.cacheMu.Unlock()
+
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		exists, err := smngr.rdb.Exists(ctx, sessionKey).Result()
 		if err != nil {
@@ -199,12 +253,10 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 			return nil, fmt.Errorf("session not found: %s", sessionID)
 		}
 
-		// Update last activity timestamp
 		if err := smngr.rdb.HSet(ctx, sessionKey, "last_activity", time.Now().Unix()).Err(); err != nil {
 			return nil, err
 		}
 
-		// Renew TTL
 		return nil, smngr.rdb.Expire(ctx, sessionKey, 24*time.Hour).Err()
 	})
 
@@ -220,6 +272,11 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 }
 
 func (smngr *SessionManager) DeleteSession(ctx context.Context, sessionID string) error {
+	// Delete from local cache with Lock
+	smngr.cacheMu.Lock()
+	delete(smngr.cache, sessionID)
+	smngr.cacheMu.Unlock()
+
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		return nil, smngr.rdb.Del(ctx, "session:"+sessionID).Err()
 	})

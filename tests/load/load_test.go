@@ -3,7 +3,6 @@ package load
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"exc6/config"
 	"exc6/db"
 	infraredis "exc6/infrastructure/redis"
@@ -24,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,7 +61,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 
 	const (
 		numUsers       = 1000
-		concurrency    = 50
+		concurrency    = 100
 		requestTimeout = 5 * time.Second
 	)
 
@@ -1125,11 +1125,31 @@ func getCircuitBreakerMetrics(t *testing.T, app *TestApp) map[string]any {
 		return nil
 	}
 
-	var metrics map[string]any
-	if err := json.Unmarshal(body, &metrics); err != nil {
-		testLogger.WithError(err).Error("Failed to parse metrics JSON")
-		t.Logf("Failed to parse metrics JSON: %v", err)
-		return nil
+	// [FIX] Parse Prometheus Text Format instead of JSON
+	metrics := make(map[string]any)
+	lines := strings.Split(string(body), "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip comments and empty lines
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Split by whitespace (key value)
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			key := parts[0]
+			valueStr := parts[1]
+
+			// Try to parse value as float
+			if val, err := strconv.ParseFloat(valueStr, 64); err == nil {
+				metrics[key] = val
+			} else {
+				// Keep as string if not a number
+				metrics[key] = valueStr
+			}
+		}
 	}
 
 	return metrics
@@ -1138,10 +1158,12 @@ func getCircuitBreakerMetrics(t *testing.T, app *TestApp) map[string]any {
 func BenchmarkLogin(b *testing.B) {
 	testLogger.Info("Starting login benchmark")
 
-	app, cleanup := setupTestApp(&testing.T{})
+	mockT := &testing.T{}
+	app, cleanup := setupTestApp(mockT)
 	defer cleanup()
 
-	users := createTestUsers(&testing.T{}, app, b.N)
+	const userPoolSize = 10
+	users := createTestUsers(mockT, app, userPoolSize)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -1159,10 +1181,12 @@ func BenchmarkLogin(b *testing.B) {
 func BenchmarkSendMessage(b *testing.B) {
 	testLogger.Info("Starting message send benchmark")
 
-	app, cleanup := setupTestApp(&testing.T{})
+	mockT := &testing.T{}
+	app, cleanup := setupTestApp(mockT)
 	defer cleanup()
 
-	users := createTestUsers(&testing.T{}, app, 100)
+	const userPoolSize = 10
+	users := createTestUsers(mockT, app, userPoolSize)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
