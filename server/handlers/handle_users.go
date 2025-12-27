@@ -37,11 +37,7 @@ func HandleUserRegister(qdb *db.Queries) fiber.Handler {
 
 		// Validate password match
 		if password != confirmPassword {
-			err := apperrors.NewPasswordMismatch()
-			// FIX: Return proper status code for validation errors
-			return ctx.Status(fiber.StatusBadRequest).Render("partials/register", fiber.Map{
-				"Error": err.Message,
-			})
+			return apperrors.NewPasswordMismatch() // Let error handler set status
 		}
 
 		// Validate password strength

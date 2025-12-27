@@ -58,8 +58,15 @@ func run() error {
 	// Open users database
 	datb, err := sql.Open("postgres", cfg.Database.ConnectionString)
 	if err != nil {
-		return fmt.Errorf("failed to open database connection: %w", err)
+		return fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Configure connection pool
+	datb.SetMaxOpenConns(100)
+	datb.SetMaxIdleConns(10)
+	datb.SetConnMaxLifetime(5 * time.Minute)
+	datb.SetConnMaxIdleTime(10 * time.Minute)
+
 	dbqueries := db.New(datb)
 	log.Println("✓ Loaded users database")
 

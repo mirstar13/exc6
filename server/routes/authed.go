@@ -4,26 +4,29 @@ import (
 	"exc6/db"
 	"exc6/server/handlers"
 	"exc6/server/middleware/auth"
+	"exc6/server/middleware/csrf"
 	"exc6/server/websocket"
 	"exc6/services/calls"
 	"exc6/services/chat"
 	"exc6/services/friends"
 	"exc6/services/groups"
 	"exc6/services/sessions"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 // AuthRoutes handles all authenticated routes (requires valid session)
 type AuthRoutes struct {
-	db             *db.Queries
-	csrv           *chat.ChatService
-	fsrv           *friends.FriendService
-	gsrv           *groups.GroupService
-	smngr          *sessions.SessionManager
-	wsManager      *websocket.Manager
-	callService    *calls.CallService
-	csrfMiddleware fiber.Handler
+	db          *db.Queries
+	csrv        *chat.ChatService
+	fsrv        *friends.FriendService
+	gsrv        *groups.GroupService
+	smngr       *sessions.SessionManager
+	wsManager   *websocket.Manager
+	callService *calls.CallService
+	rdb         *redis.Client
 }
 
 // NewAuthRoutes creates a new authenticated routes handler
@@ -35,17 +38,17 @@ func NewAuthRoutes(
 	smngr *sessions.SessionManager,
 	wsManager *websocket.Manager,
 	callService *calls.CallService,
-	csrfMiddleware fiber.Handler,
+	rdb *redis.Client,
 ) *AuthRoutes {
 	return &AuthRoutes{
-		db:             db,
-		csrv:           csrv,
-		fsrv:           fsrv,
-		gsrv:           gsrv,
-		smngr:          smngr,
-		wsManager:      wsManager,
-		callService:    callService,
-		csrfMiddleware: csrfMiddleware,
+		db:          db,
+		csrv:        csrv,
+		fsrv:        fsrv,
+		gsrv:        gsrv,
+		smngr:       smngr,
+		wsManager:   wsManager,
+		callService: callService,
+		rdb:         rdb,
 	}
 }
 
@@ -61,9 +64,36 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 		Next:           nil,
 	}))
 
+	csrfStorage := csrf.NewRedisStorage(ar.rdb, 1*time.Hour)
+
+	// This ensures tokens are available (in Locals and Cookies) when validation happens
+	// This remains global so tokens are generated/injected on all requests
+	authed.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
+
+	// Prepare CSRF Protection Middleware (validation) but do not attach globally
+	// We will attach it to authenticated routes so it runs AFTER Auth middleware
+	csrfMiddleware := csrf.New(csrf.Config{
+		Storage:    csrfStorage,
+		KeyLookup:  "header:X-CSRF-Token",
+		CookieName: "csrf_token",
+		Expiration: 15 * time.Minute,
+		Next: func(c *fiber.Ctx) bool {
+			path := c.Path()
+			// Skip CSRF for public auth endpoints and GET requests
+			return path == "/login" ||
+				path == "/register" ||
+				path == "/login-form" ||
+				path == "/register-form" ||
+				path == "/api/v1/status" ||
+				c.Method() == "GET" ||
+				c.Method() == "HEAD" ||
+				c.Method() == "OPTIONS"
+		},
+	})
+
 	// 2. Then, apply CSRF Middleware (validates token)
 	// Now when it runs, c.Locals("username") will be populated, fixing "User: <nil>" logs
-	authed.Use(ar.csrfMiddleware)
+	authed.Use(csrfMiddleware)
 
 	// Dashboard - main chat interface
 	authed.Get("/dashboard", handlers.HandleDashboard(ar.fsrv, ar.gsrv, ar.csrv, ar.callService, ar.db))

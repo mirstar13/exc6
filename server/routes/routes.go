@@ -12,16 +12,17 @@ import (
 	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 )
 
 // RegisterRoutes configures all application routes and middleware
-func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager, websocketManager websocket.Manager, callssrv *calls.CallService, csrfMiddleware fiber.Handler) {
+func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv *friends.FriendService, gsrv *groups.GroupService, smngr *sessions.SessionManager, websocketManager websocket.Manager, callssrv *calls.CallService, rdb *redis.Client) {
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Initialize route handlers
 	publicRoutes := NewPublicRoutes(db, smngr)
 	apiRoutes := NewAPIRoutes()
-	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv, csrfMiddleware)
+	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv, rdb)
 
 	// Register public routes (no auth required)
 	publicRoutes.Register(app)

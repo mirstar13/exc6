@@ -37,14 +37,14 @@ const (
 
 // Message represents a WebSocket message
 type Message struct {
-	Type      MessageType            `json:"type"`
-	ID        string                 `json:"id,omitempty"`
-	From      string                 `json:"from"`
-	To        string                 `json:"to,omitempty"`
-	GroupID   string                 `json:"group_id,omitempty"`
-	Content   string                 `json:"content,omitempty"`
-	Data      map[string]interface{} `json:"data,omitempty"`
-	Timestamp int64                  `json:"timestamp"`
+	Type      MessageType    `json:"type"`
+	ID        string         `json:"id,omitempty"`
+	From      string         `json:"from"`
+	To        string         `json:"to,omitempty"`
+	GroupID   string         `json:"group_id,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+	Timestamp int64          `json:"timestamp"`
 }
 
 // Client represents a WebSocket client connection
@@ -183,7 +183,7 @@ func (m *Manager) RegisterClient(client *Client) {
 	// Optional: Subscribe to user-specific Redis channel for highly scalable architecture
 	// For now, Global Broadcast + Local Check is sufficient for <10k users
 
-	logger.WithFields(map[string]interface{}{
+	logger.WithFields(map[string]any{
 		"username":      client.Username,
 		"total_clients": len(m.clients),
 	}).Info("Client Registered")
@@ -227,12 +227,12 @@ func (m *Manager) sendDirectMessage(message *Message) {
 			logger.WithField("to", message.To).Warn("Client buffer full")
 		}
 	} else {
-		// [FIX] Publish to Redis if not local
+		// Publish to Redis if not local
 		m.publishToRedis(message)
 	}
 }
 
-// [FIX] Optimized Group Broadcast (O(M) instead of O(N))
+// Optimized Group Broadcast (O(M) instead of O(N))
 func (m *Manager) sendGroupMessage(message *Message) {
 	if m.groupService == nil {
 		return
@@ -245,26 +245,50 @@ func (m *Manager) sendGroupMessage(message *Message) {
 		return
 	}
 
-	// Iterate over MEMBERS, not CLIENTS
-	for _, member := range members {
-		m.mu.RLock()
-		client, isLocal := m.clients[member.Username]
-		m.mu.RUnlock()
+	// One lock to get all local clients
+	m.mu.RLock()
+	localClients := make([]*Client, 0, len(members))
+	remoteUsers := make([]string, 0)
 
-		if isLocal {
-			select {
-			case client.Send <- message:
-			default:
-				// drop
-			}
+	for _, member := range members {
+		if client, exists := m.clients[member.Username]; exists {
+			localClients = append(localClients, client)
 		} else {
-			// If not local, we need to send it to them via Redis.
-			// Optimization: To prevent flooding Redis with N messages for N group members,
-			// sophisticated systems use "Fan-out on Read" or "Group Channels".
-			// For simplicity and correctness here: Send direct message via Redis.
-			msgCopy := *message
-			msgCopy.To = member.Username
-			m.publishToRedis(&msgCopy)
+			remoteUsers = append(remoteUsers, member.Username)
+		}
+	}
+	m.mu.RUnlock()
+
+	// Send to local clients without holding lock
+	for _, client := range localClients {
+		select {
+		case client.Send <- message:
+		default:
+		}
+	}
+
+	// Batch publish to Redis for remote users
+	if len(remoteUsers) > 0 {
+		m.batchPublishToRedis(message, remoteUsers)
+	}
+}
+
+func (m *Manager) batchPublishToRedis(message *Message, remoteUsers []string) {
+	// For each remote user, publish a targeted message to their user-specific channel
+	// or use the global channel with the 'To' field set
+	for _, username := range remoteUsers {
+		userMessage := *message // Copy the message
+		userMessage.To = username
+
+		payload, err := json.Marshal(userMessage)
+		if err != nil {
+			logger.WithError(err).Error("Failed to marshal message for Redis")
+			continue
+		}
+
+		// Publish to global channel
+		if err := m.rdb.Publish(m.ctx, PubSubChannelGlobal, payload).Err(); err != nil {
+			logger.WithError(err).WithField("user", username).Warn("Failed to publish to Redis")
 		}
 	}
 }
@@ -413,7 +437,7 @@ func (c *Client) WritePump() {
 
 		// Recover from panics to prevent server crash during connection storms
 		if r := recover(); r != nil {
-			logger.WithFields(map[string]interface{}{
+			logger.WithFields(map[string]any{
 				"username": c.Username,
 				"error":    r,
 			}).Warn("Recovered from panic in WritePump")
@@ -427,8 +451,10 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case message, ok := <-c.Send:
-			// Safety check before setting deadline
+			// Add mutex lock around write operations
+			c.mu.Lock()
 			if c.Conn == nil {
+				c.mu.Unlock()
 				return
 			}
 
@@ -442,6 +468,7 @@ func (c *Client) WritePump() {
 			}
 
 			err := c.Conn.WriteJSON(message)
+			c.mu.Unlock()
 			if err != nil {
 				// Log at debug level to avoid spamming logs during load tests
 				logger.WithField("user", c.Username).Debug("WebSocket write error (client likely disconnected)")

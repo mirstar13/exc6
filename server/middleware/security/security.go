@@ -76,7 +76,9 @@ func New(config ...Config) fiber.Handler {
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Set("Permissions-Policy", "geolocation=(), microphone=(self), camera=(self)")
 
-		c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		if c.Protocol() == "https" {
+			c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		}
 
 		return c.Next()
 	}

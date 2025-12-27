@@ -6,8 +6,6 @@ import (
 	"exc6/config"
 	"exc6/db"
 	"exc6/pkg/logger"
-	"exc6/server/handlers"
-	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
 	"exc6/server/middleware/security"
 	"exc6/server/routes"
@@ -107,33 +105,6 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		},
 	}))
 
-	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
-
-	// This ensures tokens are available (in Locals and Cookies) when validation happens
-	// This remains global so tokens are generated/injected on all requests
-	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
-
-	// Prepare CSRF Protection Middleware (validation) but do not attach globally
-	// We will attach it to authenticated routes so it runs AFTER Auth middleware
-	csrfMiddleware := csrf.New(csrf.Config{
-		Storage:    csrfStorage,
-		KeyLookup:  "header:X-CSRF-Token",
-		CookieName: "csrf_token",
-		Expiration: 1 * time.Hour,
-		Next: func(c *fiber.Ctx) bool {
-			path := c.Path()
-			// Skip CSRF for public auth endpoints and GET requests
-			return path == "/login" ||
-				path == "/register" ||
-				path == "/login-form" ||
-				path == "/register-form" ||
-				path == "/api/v1/status" ||
-				c.Method() == "GET" ||
-				c.Method() == "HEAD" ||
-				c.Method() == "OPTIONS"
-		},
-	})
-
 	// Setup favicon middleware
 	app.Use(favicon.New(favicon.Config{
 		File: cfg.Server.StaticDir + "/favicon.ico",
@@ -192,7 +163,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	}
 
 	// Register all routes, passing the CSRF middleware
-	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr, *websocketManager, callsSrv, csrfMiddleware)
+	routes.RegisterRoutes(app, db, csrv, fsrv, gsrv, smngr, *websocketManager, callsSrv, rdb)
 
 	return srv, nil
 }
