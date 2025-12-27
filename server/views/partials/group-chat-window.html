@@ -178,7 +178,6 @@
             const scrollWrapper = document.getElementById('scroll-wrapper');
             const messageList = document.getElementById('message-list');
             
-            // --- Entrance Animations ---
             if (window.anime) {
                 const tl = anime.timeline({ easing: 'easeOutExpo' });
 
@@ -213,28 +212,18 @@
             let wsClient = null;
             let lastSender = null;
             
-            // Initialize WebSocket for Group
-            function initWebSocket() {
-                // Reuse WebSocketClient class which handles reconnection
-                wsClient = new WebSocketClient(
-                    handleGroupMessage,
-                    null // No calls in group chat for now
-                );
-                wsClient.connect();
-            }
-
             function handleGroupMessage(message) {
-                // Check if message is for this group
+                // Filter: Ignore messages for other groups
                 if (message.group_id !== groupId) return;
                 
                 // Render message
                 const messageHTML = renderMessage(message);
                 
-                // Animate insertion
+                // ... (keep existing animation/append logic) ...
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = messageHTML;
                 const newMsg = tempDiv.firstElementChild;
-                newMsg.classList.add('opacity-0', 'translate-y-2'); // Prepare state
+                newMsg.classList.add('opacity-0', 'translate-y-2');
                 
                 messageList.appendChild(newMsg);
                 
@@ -252,6 +241,8 @@
 
                 scrollToBottom();
             }
+
+            window.activeChatHandler = handleGroupMessage;
 
             function renderMessage(message) {
                 const isMe = message.from === username;
@@ -366,7 +357,6 @@
             }
             
             scrollToBottom();
-            initWebSocket();
             
             // Load members
             fetch('/groups/' + groupId + '/members')
@@ -376,7 +366,10 @@
                 });
             
             window.addEventListener('beforeunload', function() {
-                if (wsClient) wsClient.close();
+                // Don't close the connection, just remove the handler
+                if (window.activeChatHandler === handleGroupMessage) {
+                    window.activeChatHandler = null;
+                }
             });
         })();
         

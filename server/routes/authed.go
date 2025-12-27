@@ -89,7 +89,7 @@ func (ar *AuthRoutes) Register(app *fiber.App) {
 	authed.Get("/contacts", handlers.HandleGetContacts(ar.fsrv, ar.gsrv, ar.csrv, ar.callService))
 
 	// Group management routes
-	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv)
+	RegisterGroupRoutes(authed, ar.db, ar.csrv, ar.gsrv, ar.wsManager)
 }
 
 // registerWebSocketRoutes sets up WebSocket endpoints

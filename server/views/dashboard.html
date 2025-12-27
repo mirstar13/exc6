@@ -293,18 +293,24 @@
 
             const wsClient = new WebSocketClient(
                 (message) => {
-                    // On incoming chat message or notification
+                    // 1. Priority: Route to the active chat window if open
+                    if (window.activeChatHandler) {
+                        window.activeChatHandler(message);
+                    }
+
+                    // 2. Global: Update Notifications (Badge)
                     if (message.type === 'chat' || message.type === 'group_chat' || message.type === 'notification') {
-                        // Dispatch event to update notification badge
                         document.body.dispatchEvent(new Event('notifications-updated'));
                     }
                 },
                 (signal) => {
-                    // Handle call signals (if using voice calls)
                     if (window.voiceCall) window.voiceCall.handleCallSignal(signal);
                 }
             );
             wsClient.connect();
+
+            // Make client available globally for calls/chats to send messages
+            window.globalWsClient = wsClient;
 
             window.voiceCall = new VoiceCallManager(wsClient, "{{.Username}}");
         });

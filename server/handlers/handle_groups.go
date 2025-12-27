@@ -5,6 +5,7 @@ import (
 	"exc6/apperrors"
 	"exc6/db"
 	"exc6/pkg/logger"
+	"exc6/server/websocket"
 	"exc6/services/chat"
 	"exc6/services/groups"
 	"time"
@@ -36,7 +37,7 @@ func HandleGetGroups(gsrv *groups.GroupService) fiber.Handler {
 }
 
 // HandleSendGroupMessage sends a message to a group
-func HandleSendGroupMessage(csrv *chat.ChatService, gsrv *groups.GroupService) fiber.Handler {
+func HandleSendGroupMessage(csrv *chat.ChatService, gsrv *groups.GroupService, wsManager *websocket.Manager) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username, err := getUsernameFromContext(c)
 		if err != nil {
@@ -60,31 +61,31 @@ func HandleSendGroupMessage(csrv *chat.ChatService, gsrv *groups.GroupService) f
 		// Verify user is member
 		_, err = gsrv.GetGroupInfo(ctx, groupID, username)
 		if err != nil {
-			logger.WithFields(map[string]interface{}{
-				"username": username,
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Error("User not authorized to send message to group")
 			return err
 		}
 
-		// Send message
-		_, err = csrv.SendGroupMessage(ctx, username, groupID, content)
+		// Send message (Persist to DB/Redis)
+		msg, err := csrv.SendGroupMessage(ctx, username, groupID, content)
 		if err != nil {
-			logger.WithFields(map[string]interface{}{
-				"username": username,
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Error("Failed to send group message")
+			logger.WithError(err).Error("Failed to send group message")
 			return apperrors.NewInternalError("Failed to send message").WithInternal(err)
 		}
+
+		wsMsg := &websocket.Message{
+			Type:      websocket.MessageTypeGroupChat,
+			ID:        msg.MessageID,
+			From:      msg.FromID,
+			GroupID:   msg.GroupID,
+			Content:   msg.Content,
+			Timestamp: msg.Timestamp,
+		}
+		wsManager.BroadcastToGroup(groupID, wsMsg)
 
 		logger.WithFields(map[string]interface{}{
 			"username": username,
 			"group_id": groupID,
-		}).Debug("Group message sent successfully")
+		}).Debug("Group message sent and broadcasted")
 
-		// Return 200 OK - SSE will handle displaying the message
 		return c.SendStatus(fiber.StatusOK)
 	}
 }
