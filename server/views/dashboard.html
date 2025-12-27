@@ -242,8 +242,20 @@
         });
         
         document.body.addEventListener('htmx:afterSwap', function(evt) {
+            // Existing logic for group modal
             if (evt.detail.target.id === 'group-modal' && evt.detail.xhr.status === 200) {
                 setTimeout(() => window.location.reload(), 1500);
+            }
+
+            // When the contact list reloads via HTMX (due to notifications-updated), 
+            // the items have opacity:0 from CSS. We must animate them in.
+            if (evt.detail.target.id === 'contacts-list') {
+                anime({
+                    targets: '#contacts-list .contact-list-item',
+                    opacity: [0, 1],
+                    easing: 'easeOutQuad',
+                    duration: 300
+                });
             }
         });
 
