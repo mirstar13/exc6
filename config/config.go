@@ -16,7 +16,6 @@ type Config struct {
 	Session   SessionConfig
 	RateLimit RateLimitConfig
 	Database  DatabaseConfig
-	SSE       SSEConfig
 }
 
 type ServerConfig struct {
@@ -54,10 +53,6 @@ type SessionConfig struct {
 	TTL             time.Duration
 	CookieName      string
 	UpdateThreshold time.Duration // Minimum time between session updates
-}
-
-type SSEConfig struct {
-	KeepAliveInterval time.Duration // Interval for sending keep-alive pings
 }
 
 type RateLimitConfig struct {
@@ -190,9 +185,6 @@ func Load() (*Config, error) {
 			CookieName:      getEnv("SESSION_COOKIE_NAME", "session_id"),
 			UpdateThreshold: getEnvAsDuration("SESSION_UPDATE_THRESHOLD", 60*time.Second),
 		},
-		SSE: SSEConfig{
-			KeepAliveInterval: getEnvAsDuration("SSE_KEEPALIVE_INTERVAL", 15*time.Second),
-		},
 		RateLimit: RateLimitConfig{
 			Capacity:     getEnvAsInt64("RATE_LIMIT_CAPACITY", 200),
 			RefillRate:   getEnvAsInt64("RATE_LIMIT_REFILL", 10),
@@ -261,11 +253,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Session.UpdateThreshold <= 0 {
 		errors = append(errors, "session update threshold must be > 0")
-	}
-
-	// SSE validation
-	if c.SSE.KeepAliveInterval <= 0 {
-		errors = append(errors, "SSE keep-alive interval must be > 0")
 	}
 
 	// Rate limit validation

@@ -327,6 +327,10 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 	app, cleanup := setupTestApp(t)
 	defer cleanup()
 
+	// Start a single test server for all connections
+	serverAddr, stopServer := startTestServer(app)
+	defer stopServer()
+
 	testLogger.Info("Creating test user accounts...")
 	users := createTestUsers(t, app, numConnections)
 	testLogger.WithField("count", len(users)).Info("Users created")
@@ -360,7 +364,8 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 			defer wg.Done()
 
 			user := users[userIdx]
-			ws, err := connectWebSocket(app, user.SessionID)
+			// Pass the server address
+			ws, err := connectWebSocket(serverAddr, user.SessionID)
 			if err != nil {
 				atomic.AddInt64(&disconnectedCount, 1)
 				testLogger.WithFields(map[string]interface{}{
@@ -384,7 +389,17 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 				case <-ctx.Done():
 					return
 				default:
-					if msg := receiveMessage(ws); msg != nil {
+					msg, err := receiveMessage(ws)
+					if err != nil {
+						// Check if it's a timeout error (which is expected due to ReadDeadline)
+						if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+							continue
+						}
+						// If it's another error (like connection closed), we stop trying to read
+						return
+					}
+
+					if msg != nil {
 						atomic.AddInt64(&messagesReceived, 1)
 					}
 				}
@@ -647,7 +662,12 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 	os.Setenv("REDIS_PASSWORD", "")
 	os.Setenv("KAFKA_ADDR", "localhost:9093")
 
+	// Increase rate limits for load testing to prevent 429 errors during user creation
+	os.Setenv("RATE_LIMIT_CAPACITY", "10000")
+	os.Setenv("RATE_LIMIT_REFILL", "1000")
+
 	cfg, err := config.Load()
+	cfg.Server.LogFile = "C:/MyFiles/Code/Go/learn/redis/exc6/tests/load/log/server.log"
 	require.NoError(t, err, "Failed to load test config")
 
 	dbString := os.Getenv("GOOSE_DBSTRING")
@@ -971,10 +991,7 @@ func startTestServer(app *TestApp) (string, func()) {
 	return addr, cleanup
 }
 
-func connectWebSocket(app *TestApp, sessionID string) (*fastws.Conn, error) {
-	addr, cleanup := startTestServer(app)
-	defer cleanup()
-
+func connectWebSocket(addr, sessionID string) (*fastws.Conn, error) {
 	wsURL := fmt.Sprintf("ws://%s/ws/chat", addr)
 	testLogger.WithField("url", wsURL).Debug("Connecting WebSocket")
 
@@ -994,16 +1011,12 @@ func connectWebSocket(app *TestApp, sessionID string) (*fastws.Conn, error) {
 	return conn, nil
 }
 
-func receiveMessage(ws *fastws.Conn) interface{} {
+func receiveMessage(ws *fastws.Conn) (interface{}, error) {
 	ws.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 
 	var msg map[string]interface{}
 	err := ws.ReadJSON(&msg)
-	if err != nil {
-		return nil
-	}
-
-	return msg
+	return msg, err
 }
 
 func queryGetUserByUsername(testDB *TestDB) error {
