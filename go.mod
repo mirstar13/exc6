@@ -19,6 +19,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.45.0
 	golang.org/x/image v0.33.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

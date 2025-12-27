@@ -5,6 +5,7 @@ import (
 	"exc6/apperrors"
 	"exc6/config"
 	"exc6/db"
+	"exc6/pkg/logger"
 	"exc6/server/handlers"
 	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
@@ -48,13 +49,31 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		return nil, fmt.Errorf("failed to add template functions: %w", err)
 	}
 
-	errLogger, err := setupErrorLogging(cfg.Server.LogFile)
+	// Initialize application logger with rotation
+	appLogger, err := logger.NewWithConfig(logger.Config{
+		Filename:   cfg.Log.Filename,
+		MaxSize:    cfg.Log.MaxSize,
+		MaxBackups: cfg.Log.MaxBackups,
+		MaxAge:     cfg.Log.MaxAge,
+		Compress:   cfg.Log.Compress,
+		LocalTime:  true,
+		Level:      config.ParseLogLevel(cfg.Log.Level),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	// Set as default global logger
+	logger.SetDefault(appLogger)
+
+	// Setup error logging
+	errLogger, err := setupErrorLogging(cfg.Log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup error logging: %w", err)
 	}
 
 	errorConfig := apperrors.HandlerConfig{
-		Logger:             errLogger,
+		Logger:             convertLoggerToLog(errLogger),
 		ShowInternalErrors: os.Getenv("APP_ENV") == "development",
 		OnError: func(c *fiber.Ctx, err *apperrors.AppError) {
 			// TODO: Add metrics/monitoring here
@@ -70,6 +89,11 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		WriteTimeout: cfg.Server.WriteTimeout,
 		ErrorHandler: apperrors.Handler(errorConfig),
 	})
+
+	// Setup HTTP request logging
+	if err := setupLogging(app, cfg.Log); err != nil {
+		return nil, fmt.Errorf("failed to setup logging: %w", err)
+	}
 
 	app.Use(requestid.New())
 
@@ -137,7 +161,7 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 	app.Static("/uploads", cfg.Server.UploadsDir)
 
 	// Setup logging
-	if err := setupLogging(app, cfg.Server.LogFile); err != nil {
+	if err := setupLogging(app, cfg.Log); err != nil {
 		return nil, fmt.Errorf("failed to setup logging: %w", err)
 	}
 

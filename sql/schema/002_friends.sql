@@ -9,4 +9,4 @@ CREATE TABLE friends (
 );
 
 -- +goose Down
-DROP TABLE friend;
+DROP TABLE friends;

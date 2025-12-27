@@ -24,7 +24,7 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 		IsGroup:   true,
 	}
 
-	logger.WithFields(map[string]interface{}{
+	logger.WithFields(map[string]any{
 		"message_id": msg.MessageID,
 		"from":       from,
 		"group_id":   groupID,
@@ -58,7 +58,7 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 	})
 
 	if err != nil {
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"group_id":   groupID,
 			"error":      err.Error(),
@@ -107,7 +107,7 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 func (cs *ChatService) GetGroupHistory(ctx context.Context, groupID string) ([]*ChatMessage, error) {
 	cacheKey := fmt.Sprintf("chat:group:%s:messages", groupID)
 
-	logger.WithFields(map[string]interface{}{
+	logger.WithFields(map[string]any{
 		"group_id":  groupID,
 		"cache_key": cacheKey,
 	}).Debug("Fetching group message history")
@@ -117,13 +117,12 @@ func (cs *ChatService) GetGroupHistory(ctx context.Context, groupID string) ([]*
 	})
 
 	if err != nil {
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"group_id": groupID,
 			"error":    err.Error(),
 		}).Error("Circuit breaker: Failed to fetch group history from Redis")
-		// Return empty slice on failure rather than error
-		// This allows the UI to still load, just without history
-		return []*ChatMessage{}, nil
+
+		return nil, fmt.Errorf("failed to fetch group history: %w", err)
 	}
 
 	results := result.([]string)
@@ -137,7 +136,7 @@ func (cs *ChatService) GetGroupHistory(ctx context.Context, groupID string) ([]*
 		messages = append(messages, &msg)
 	}
 
-	logger.WithFields(map[string]interface{}{
+	logger.WithFields(map[string]any{
 		"group_id":      groupID,
 		"message_count": len(messages),
 	}).Debug("Retrieved group history")
@@ -154,7 +153,7 @@ func (cs *ChatService) SubscribeToGroup(ctx context.Context, groupID string) *re
 	})
 
 	if err != nil {
-		logger.WithFields(map[string]interface{}{
+		logger.WithFields(map[string]any{
 			"group_id": groupID,
 			"channel":  channelName,
 			"error":    err.Error(),
@@ -162,7 +161,7 @@ func (cs *ChatService) SubscribeToGroup(ctx context.Context, groupID string) *re
 		return nil
 	}
 
-	logger.WithFields(map[string]interface{}{
+	logger.WithFields(map[string]any{
 		"group_id": groupID,
 		"channel":  channelName,
 	}).Debug("Subscribed to group channel")

@@ -20,16 +20,14 @@ WHERE user_id = $1 AND accepted = true
 OR friend_id = $1 AND accepted = true;
 
 -- name: GetFriendsWithDetails :many
-SELECT u.id, u.username, u.icon, u.custom_icon, f.accepted, f.created_at
+SELECT DISTINCT u.id, u.username, u.icon, u.custom_icon, f.accepted, f.created_at
 FROM friends f
-JOIN users u ON f.friend_id = u.id
-WHERE f.user_id = $1 AND f.accepted = true
-UNION ALL
-SELECT u.id, u.username, u.icon, u.custom_icon, f.accepted, f.created_at
-FROM friends f
-JOIN users u ON f.user_id = u.id
-WHERE f.friend_id = $1 AND f.accepted = true
-ORDER BY created_at DESC;
+JOIN users u ON (
+    (f.friend_id = u.id AND f.user_id = $1) OR
+    (f.user_id = u.id AND f.friend_id = $1)
+)
+WHERE f.accepted = true
+ORDER BY f.created_at DESC;
 
 -- name: GetFriendRequests :many
 SELECT * FROM friends 

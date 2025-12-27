@@ -54,9 +54,7 @@ func New(config Config) fiber.Handler {
 				// The session is still valid
 				c.Locals("session_renewal_failed", true)
 			} else {
-				if timeSinceLastUpdate >= int64(cfg.UpdateThreshold.Seconds()) {
-					cfg.SessionManager.RenewSession(updateCtx, sessionID)
-				}
+				cfg.SessionManager.RenewSession(updateCtx, sessionID)
 			}
 		}
 

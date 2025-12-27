@@ -1,57 +1,64 @@
 package server
 
 import (
-	"exc6/apperrors"
+	"exc6/config"
+	"exc6/pkg/logger"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 )
 
-// setupLogging configures the HTTP request logger middleware
-func setupLogging(app *fiber.App, logFile string) error {
-	// Ensure log directory exists
-	if err := os.MkdirAll("log", 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	// Open log file
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// setupLogging configures the HTTP request logger middleware with rotation
+func setupLogging(app *fiber.App, cfg config.LogConfig) error {
+	// Create logger with rotation
+	httpLogger, err := logger.NewWithConfig(logger.Config{
+		Filename:   cfg.Filename,
+		MaxSize:    cfg.MaxSize,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAge,
+		Compress:   cfg.Compress,
+		LocalTime:  true,
+		Level:      config.ParseLogLevel(cfg.Level),
+	})
 	if err != nil {
-		// Fallback to stdout if file can't be opened
-		log.Printf("Warning: could not open log file %s: %v", logFile, err)
-		f = os.Stdout
+		return fmt.Errorf("failed to create HTTP logger: %w", err)
 	}
 
-	// Setup logger middleware
-	app.Use(logger.New(logger.Config{
+	// Setup Fiber logger middleware
+	app.Use(fiberlogger.New(fiberlogger.Config{
 		Format:     "${time} | ${status} | ${latency} | ${method} ${path} | ${ip}\n",
 		TimeFormat: "2006-01-02 15:04:05",
 		TimeZone:   "Local",
-		Output:     f,
+		Output:     httpLogger.OutputWriter, // Use the rotating writer
 	}))
 
 	return nil
 }
 
-// setupErrorLogging creates a logger for application errors
-func setupErrorLogging(logFile string) (*log.Logger, error) {
-	// Ensure log directory exists
-	if err := os.MkdirAll("log", 0755); err != nil {
-		return nil, fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	// Open log file
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// setupErrorLogging creates a logger for application errors with rotation
+func setupErrorLogging(cfg config.LogConfig) (*logger.Logger, error) {
+	// Create error logger with rotation
+	errorLogger, err := logger.NewWithConfig(logger.Config{
+		Filename:   cfg.Filename,
+		MaxSize:    cfg.MaxSize,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAge,
+		Compress:   cfg.Compress,
+		LocalTime:  true,
+		Level:      config.ParseLogLevel(cfg.Level),
+	})
 	if err != nil {
-		// Fallback to stdout if file can't be opened
-		log.Printf("Warning: could not open log file %s: %v", logFile, err)
-		f = os.Stdout
+		return nil, fmt.Errorf("failed to create error logger: %w", err)
 	}
 
-	errLogger := apperrors.DefaultHandlerConfig().Logger
-	errLogger.SetOutput(f)
-	return errLogger, nil
+	// Set as default logger for the apperrors package
+	// (This assumes apperrors.DefaultHandlerConfig().Logger accepts *logger.Logger)
+
+	return errorLogger, nil
+}
+
+func convertLoggerToLog(l *logger.Logger) *log.Logger {
+	return log.New(l.OutputWriter, "", 0)
 }

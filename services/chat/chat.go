@@ -3,12 +3,14 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"exc6/apperrors"
 	"exc6/db"
 	"exc6/pkg/breaker"
 	"exc6/pkg/logger"
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -48,11 +50,10 @@ type ChatService struct {
 
 	// Metrics for monitoring
 	metrics struct {
-		mu              sync.RWMutex
-		messagesQueued  int64
-		messagesSent    int64
-		messagesFailed  int64
-		messagesDropped int64
+		messagesQueued  atomic.Int64
+		messagesSent    atomic.Int64
+		messagesFailed  atomic.Int64
+		messagesDropped atomic.Int64
 	}
 }
 
@@ -125,61 +126,84 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 	if _, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
 		return nil, cs.cacheMessage(ctx, msg)
 	}); err != nil {
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"from":       msg.FromID,
-			"to":         msg.ToID,
-			"error":      err.Error(),
-		}).Error("Circuit breaker: Failed to cache message")
-		// Don't fail the send - message will still be queued
+		// Create rich error with full context
+		cacheErr := apperrors.NewCacheError(
+			"message_cache_write",
+			cs.GetConversationKey(from, to),
+			err,
+		).WithDetails("message_id", msg.MessageID).
+			WithDetails("from", from).
+			WithDetails("to", to).
+			WithContext("circuit_breaker_state", cs.cbRedis.State().String())
+
+		// Log with structured fields
+		logger.WithFields(cacheErr.LogFields()).Error("Failed to cache message")
+
+		// Continue - caching failure is not fatal
 	}
 
-	// 2. Increment unread count with circuit breaker
+	// 2. Increment unread count
 	if _, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
 		return nil, cs.IncrementUnreadCount(ctx, to, from)
 	}); err != nil {
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"from":       msg.FromID,
-			"to":         msg.ToID,
-			"error":      err.Error(),
-		}).Warn("Circuit breaker: Failed to increment unread count")
+		unreadErr := apperrors.NewCacheError(
+			"unread_counter_increment",
+			fmt.Sprintf("chat:unread:%s", to),
+			err,
+		).WithDetails("recipient", to).
+			WithDetails("sender", from)
+
+		logger.WithFields(unreadErr.LogFields()).Warn("Failed to increment unread count")
 	}
 
-	// 3. Try to buffer message (non-blocking)
+	// 3. Buffer message for Kafka
 	select {
 	case cs.messageBuffer <- msg:
 		cs.incrementMetric("queued")
 	default:
-		// Buffer full - persist to Redis queue with circuit breaker
+		// Buffer full - persist to Redis queue
 		logger.WithFields(map[string]any{
 			"message_id":  msg.MessageID,
 			"buffer_size": len(cs.messageBuffer),
+			"from":        from,
+			"to":          to,
 		}).Warn("Message buffer full, persisting to Redis queue")
 
 		if _, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
 			return nil, cs.persistMessageToQueue(ctx, msg)
 		}); err != nil {
-			logger.WithFields(map[string]any{
-				"message_id": msg.MessageID,
-				"error":      err.Error(),
-			}).Error("Circuit breaker: Failed to persist message to queue")
+			deliveryErr := apperrors.NewMessageDeliveryError(
+				from,
+				to,
+				"buffer_full_and_redis_unavailable",
+				err,
+			).WithDetails("message_id", msg.MessageID).
+				WithDetails("buffer_capacity", cap(cs.messageBuffer)).
+				WithDetails("buffer_length", len(cs.messageBuffer)).
+				WithContext("circuit_breaker_state", cs.cbRedis.State().String())
+
+			logger.WithFields(deliveryErr.LogFields()).Error("Message delivery failed")
 			cs.incrementMetric("failed")
-			return nil, fmt.Errorf("failed to persist message: %w", err)
+
+			return nil, deliveryErr
 		}
 		cs.incrementMetric("queued")
 	}
 
-	// 4. Publish to Redis Pub/Sub with circuit breaker (best effort)
+	// 4. Publish to Redis Pub/Sub (best effort)
 	msgJSON, _ := json.Marshal(msg)
 	if _, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
 		return nil, cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err()
 	}); err != nil {
-		logger.WithFields(map[string]any{
-			"message_id": msg.MessageID,
-			"channel":    "chat:messages",
-			"error":      err.Error(),
-		}).Warn("Circuit breaker: Failed to publish message to Redis Pub/Sub")
+		pubsubErr := apperrors.NewCacheError(
+			"pubsub_publish",
+			"chat:messages",
+			err,
+		).WithDetails("message_id", msg.MessageID).
+			WithDetails("from", from).
+			WithDetails("to", to)
+
+		logger.WithFields(pubsubErr.LogFields()).Warn("Failed to publish to Redis Pub/Sub")
 	}
 
 	return msg, nil
@@ -567,26 +591,20 @@ func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 
 // Metrics helpers
 func (cs *ChatService) incrementMetric(name string) {
-	cs.metrics.mu.Lock()
-	defer cs.metrics.mu.Unlock()
-
 	switch name {
 	case "queued":
-		cs.metrics.messagesQueued++
+		cs.metrics.messagesQueued.Add(1)
 	case "sent":
-		cs.metrics.messagesSent++
+		cs.metrics.messagesSent.Add(1)
 	case "failed":
-		cs.metrics.messagesFailed++
+		cs.metrics.messagesFailed.Add(1)
 	case "dropped":
-		cs.metrics.messagesDropped++
+		cs.metrics.messagesDropped.Add(1)
 	}
 }
 
 // GetMetrics returns comprehensive metrics including circuit breaker state
 func (cs *ChatService) GetMetrics() map[string]any {
-	cs.metrics.mu.RLock()
-	defer cs.metrics.mu.RUnlock()
-
 	// Get circuit breaker states
 	redisState := cs.cbRedis.State()
 	redisCounts := cs.cbRedis.Counts()
@@ -596,10 +614,10 @@ func (cs *ChatService) GetMetrics() map[string]any {
 
 	return map[string]any{
 		"messages": map[string]int64{
-			"queued":  cs.metrics.messagesQueued,
-			"sent":    cs.metrics.messagesSent,
-			"failed":  cs.metrics.messagesFailed,
-			"dropped": cs.metrics.messagesDropped,
+			"queued":  cs.metrics.messagesQueued.Load(),
+			"sent":    cs.metrics.messagesSent.Load(),
+			"failed":  cs.metrics.messagesFailed.Load(),
+			"dropped": cs.metrics.messagesDropped.Load(),
 		},
 		"circuit_breakers": map[string]any{
 			"redis": map[string]any{

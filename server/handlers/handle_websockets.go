@@ -20,13 +20,35 @@ import (
 // HandleWebSocketUpgrade upgrades HTTP connection to WebSocket
 func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Check if it's a websocket upgrade request
 		if websocket.IsWebSocketUpgrade(c) {
+			// Validate Origin header
+			origin := c.Get("Origin")
+			if !isAllowedOrigin(origin) {
+				return fiber.ErrForbidden
+			}
 			c.Locals("allowed", true)
 			return c.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	}
+}
+
+func isAllowedOrigin(origin string) bool {
+	// List of allowed origins for WebSocket connections
+	allowedOrigins := []string{
+		"http://localhost:3000",
+		"http://localhost:8080",
+		"http://localhost:8000",
+		"https://yourdomain.com",
+	}
+
+	for _, allowed := range allowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+
+	return false
 }
 
 // HandleWebSocket handles WebSocket connections for chat and calls

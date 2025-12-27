@@ -103,9 +103,6 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 		// Update context
 		ctx.Locals("username", user.Username)
 
-		// Small delay for UX (shows loading state)
-		time.Sleep(500 * time.Millisecond)
-
 		// Extract string values from sql.NullString
 		iconValue := ""
 		if user.Icon.Valid {

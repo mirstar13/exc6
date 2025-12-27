@@ -423,7 +423,9 @@ func (c *Client) WritePump() {
 			}).Warn("Recovered from panic in WritePump")
 		}
 
-		c.Conn.Close()
+		if c.Conn != nil {
+			c.Conn.Close()
+		}
 	}()
 
 	for {

@@ -1,10 +1,12 @@
 package config
 
 import (
+	"exc6/pkg/logger"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +18,7 @@ type Config struct {
 	Session   SessionConfig
 	RateLimit RateLimitConfig
 	Database  DatabaseConfig
+	Log       LogConfig
 }
 
 type ServerConfig struct {
@@ -25,7 +28,6 @@ type ServerConfig struct {
 	StaticDir    string
 	ScriptsDir   string
 	UploadsDir   string
-	LogFile      string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -63,6 +65,15 @@ type RateLimitConfig struct {
 
 type DatabaseConfig struct {
 	ConnectionString string
+}
+
+type LogConfig struct {
+	Filename   string
+	MaxSize    int // MB
+	MaxBackups int
+	MaxAge     int // days
+	Compress   bool
+	Level      string // "DEBUG", "INFO", "WARN", "ERROR"
 }
 
 // getProjectRoot finds the project root by looking for go.mod
@@ -121,11 +132,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to resolve uploads directory: %w", err)
 	}
 
-	logFile, err := resolvePath(getEnv("LOG_FILE", "./log/server.log"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve log file: %w", err)
-	}
-
 	staticDir, err := resolvePath(getEnv("STATIC_DIR", "./static"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve static directory: %w", err)
@@ -149,7 +155,6 @@ func Load() (*Config, error) {
 			UploadsDir:   uploadsDir,
 			StaticDir:    staticDir,
 			ScriptsDir:   scriptsDir,
-			LogFile:      logFile,
 			ReadTimeout:  getEnvAsDuration("READ_TIMEOUT", 5*time.Minute),
 			WriteTimeout: 0, // No write timeout by default (needed for SSE)
 		},
@@ -192,6 +197,14 @@ func Load() (*Config, error) {
 		},
 		Database: DatabaseConfig{
 			ConnectionString: getEnv("GOOSE_DBSTRING", ""),
+		},
+		Log: LogConfig{
+			Filename:   getEnv("LOG_FILE", "./log/server.log"),
+			MaxSize:    getEnvAsInt("LOG_MAX_SIZE", 100),
+			MaxBackups: getEnvAsInt("LOG_MAX_BACKUPS", 3),
+			MaxAge:     getEnvAsInt("LOG_MAX_AGE", 28),
+			Compress:   getEnvAsBool("LOG_COMPRESS", true),
+			Level:      getEnv("LOG_LEVEL", "INFO"),
 		},
 	}
 
@@ -340,4 +353,28 @@ func getEnvAsDuration(key string, defaultVal time.Duration) time.Duration {
 		return val
 	}
 	return defaultVal
+}
+
+func getEnvAsBool(key string, defaultVal bool) bool {
+	valStr := os.Getenv(key)
+	if val, err := strconv.ParseBool(valStr); err == nil {
+		return val
+	}
+	return defaultVal
+}
+
+// Helper to parse log level
+func ParseLogLevel(level string) logger.Level {
+	switch strings.ToUpper(level) {
+	case "DEBUG":
+		return logger.DEBUG
+	case "INFO":
+		return logger.INFO
+	case "WARN":
+		return logger.WARN
+	case "ERROR":
+		return logger.ERROR
+	default:
+		return logger.INFO
+	}
 }

@@ -199,23 +199,40 @@ func renderErrorFragment(err *AppError) string {
 		html.EscapeString(err.Message))
 }
 
-// logError logs the error with context
+// logError logs the error with rich context
 func logError(logger *log.Logger, c *fiber.Ctx, err *AppError) {
-	// Don't log expected errors at error level
+	// Build log message with full context
+	fields := err.LogFields()
+
+	// Add request context
+	fields["method"] = c.Method()
+	fields["path"] = c.Path()
+	fields["ip"] = c.IP()
+	fields["user_agent"] = c.Get("User-Agent")
+
+	if username := c.Locals("username"); username != nil {
+		fields["username"] = username
+	}
+
+	if requestID := c.Locals("requestid"); requestID != nil {
+		fields["request_id"] = requestID
+	}
+
+	// Format fields for standard logger
+	var fieldPairs []string
+	for k, v := range fields {
+		fieldPairs = append(fieldPairs, fmt.Sprintf("%s=%v", k, v))
+	}
+
+	logLevel := "ERROR"
 	if err.StatusCode < 500 {
-		logger.Printf("[WARN] %s %s | %s | Status: %d | User: %v",
-			c.Method(), c.Path(), err.Error(), err.StatusCode, c.Locals("username"))
-		return
+		logLevel = "WARN"
 	}
 
-	// Log internal errors with more details
-	logger.Printf("[ERROR] %s %s | %s | Status: %d | IP: %s | User: %v",
-		c.Method(), c.Path(), err.Error(), err.StatusCode, c.IP(), c.Locals("username"))
-
-	// Log stack trace for internal errors if available
-	if err.Internal != nil {
-		logger.Printf("[ERROR] Internal error: %+v", err.Internal)
-	}
+	logger.Printf("[%s] %s | %s",
+		logLevel,
+		err.Error(),
+		strings.Join(fieldPairs, " | "))
 }
 
 // getErrorTitle returns a user-friendly title based on status code

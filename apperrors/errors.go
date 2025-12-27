@@ -3,7 +3,7 @@ package apperrors
 import (
 	"errors"
 	"fmt"
-	"net/http"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -53,21 +53,29 @@ const (
 	ErrCodeServiceUnavail ErrorCode = "SERVICE_UNAVAILABLE"
 )
 
-// AppError represents a structured application error
+// AppError represents a structured application error with rich context
 type AppError struct {
 	Code       ErrorCode              `json:"code"`
 	Message    string                 `json:"message"`
 	StatusCode int                    `json:"-"`
 	Internal   error                  `json:"-"`
 	Details    map[string]interface{} `json:"details,omitempty"`
+
+	// New fields for better error tracking
+	Operation string                 `json:"-"` // What operation failed
+	Stack     []string               `json:"-"` // Call stack (optional)
+	Timestamp time.Time              `json:"-"`
+	Context   map[string]interface{} `json:"-"` // Additional context for logging
 }
 
 // Error implements the error interface
 func (e *AppError) Error() string {
 	if e.Internal != nil {
-		return fmt.Sprintf("[%s] %s: %v", e.Code, e.Message, e.Internal)
+		return fmt.Sprintf("[%s] %s: %v (operation: %s)",
+			e.Code, e.Message, e.Internal, e.Operation)
 	}
-	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
+	return fmt.Sprintf("[%s] %s (operation: %s)",
+		e.Code, e.Message, e.Operation)
 }
 
 // Unwrap returns the wrapped error
@@ -90,84 +98,65 @@ func (e *AppError) WithInternal(err error) *AppError {
 	return e
 }
 
-// New creates a new AppError
+// WithOperation sets the operation that failed
+func (e *AppError) WithOperation(op string) *AppError {
+	e.Operation = op
+	return e
+}
+
+// WithContext adds logging context (not exposed in API response)
+func (e *AppError) WithContext(key string, value interface{}) *AppError {
+	if e.Context == nil {
+		e.Context = make(map[string]interface{})
+	}
+	e.Context[key] = value
+	return e
+}
+
+// WithTimestamp sets the error timestamp (automatically set on creation)
+func (e *AppError) WithTimestamp(t time.Time) *AppError {
+	e.Timestamp = t
+	return e
+}
+
+// LogFields returns fields suitable for structured logging
+func (e *AppError) LogFields() map[string]interface{} {
+	fields := map[string]interface{}{
+		"error_code":  e.Code,
+		"message":     e.Message,
+		"operation":   e.Operation,
+		"status_code": e.StatusCode,
+		"timestamp":   e.Timestamp,
+	}
+
+	// Add details
+	for k, v := range e.Details {
+		fields["detail_"+k] = v
+	}
+
+	// Add context
+	for k, v := range e.Context {
+		fields["ctx_"+k] = v
+	}
+
+	// Add internal error message
+	if e.Internal != nil {
+		fields["internal_error"] = e.Internal.Error()
+	}
+
+	return fields
+}
+
+// New creates a new AppError with timestamp
 func New(code ErrorCode, message string, statusCode int) *AppError {
 	return &AppError{
 		Code:       code,
 		Message:    message,
 		StatusCode: statusCode,
+		Details:    make(map[string]interface{}),
+		Context:    make(map[string]interface{}),
+		Timestamp:  time.Now(),
 	}
-}
-
-// Pre-defined error constructors for common cases
-
-func NewUnauthorized(message string) *AppError {
-	if message == "" {
-		message = "Authentication required"
-	}
-	return New(ErrCodeUnauthorized, message, fiber.StatusUnauthorized)
-}
-
-func NewInvalidCredentials() *AppError {
-	return New(ErrCodeInvalidCreds, "Invalid username or password", fiber.StatusUnauthorized)
-}
-
-func NewSessionExpired() *AppError {
-	return New(ErrCodeSessionExpired, "Your session has expired", fiber.StatusUnauthorized)
-}
-
-func NewUserNotFound() *AppError {
-	return New(ErrCodeUserNotFound, "User not found", fiber.StatusNotFound)
-}
-
-func NewUserExists(username string) *AppError {
-	return New(ErrCodeUserExists, "Username already exists", fiber.StatusConflict).
-		WithDetails("username", username)
-}
-
-func NewWeakPassword(reason string) *AppError {
-	return New(ErrCodeWeakPassword, fmt.Sprintf("Password too weak: %s", reason), fiber.StatusBadRequest)
-}
-
-func NewPasswordMismatch() *AppError {
-	return New(ErrCodePasswordMismatch, "Passwords do not match", fiber.StatusBadRequest)
-}
-
-func NewInvalidFileType(allowed []string) *AppError {
-	return New(ErrCodeInvalidFileType, "Invalid file type", fiber.StatusBadRequest).
-		WithDetails("allowed_types", allowed)
-}
-
-func NewFileTooLarge(maxSize int64) *AppError {
-	return New(ErrCodeFileTooLarge, "File size exceeds limit", fiber.StatusBadRequest).
-		WithDetails("max_size_bytes", maxSize)
-}
-
-func NewValidationError(message string) *AppError {
-	return New(ErrCodeValidationFailed, message, fiber.StatusBadRequest)
-}
-
-func NewBadRequest(message string) *AppError {
-	if message == "" {
-		message = "Bad request"
-	}
-	return New(ErrCodeInvalidInput, message, fiber.StatusBadRequest)
-}
-
-func NewInternalError(message string) *AppError {
-	if message == "" {
-		message = "An internal error occurred"
-	}
-	return New(ErrCodeInternal, message, fiber.StatusInternalServerError)
-}
-
-func NewDatabaseError(operation string, err error) *AppError {
-	return New(ErrCodeDatabaseError, fmt.Sprintf("Database error during %s", operation), fiber.StatusInternalServerError).
-		WithInternal(err)
-}
-
-func NewRateLimitError() *AppError {
-	return New(ErrCodeRateLimited, "Too many requests. Please try again later.", http.StatusTooManyRequests)
 }
 
 // IsAppError checks if an error is an AppError

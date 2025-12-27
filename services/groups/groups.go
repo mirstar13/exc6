@@ -59,14 +59,24 @@ type MemberInfo struct {
 func (gs *GroupService) CreateGroup(ctx context.Context, creatorUsername, name, description, icon string) (*GroupInfo, error) {
 	// Validate group name
 	if name == "" || len(name) < 3 {
-		return nil, apperrors.NewValidationError("Group name must be at least 3 characters")
+		return nil, apperrors.NewValidationError("Group name must be at least 3 characters").
+			WithOperation("group_creation").
+			WithDetails("provided_name", name).
+			WithDetails("min_length", 3).
+			WithDetails("actual_length", len(name)).
+			WithContext("creator", creatorUsername)
 	}
 
 	result, err := breaker.ExecuteCtx(ctx, gs.cb, func() (interface{}, error) {
 		// Get creator
 		creator, err := gs.qdb.GetUserByUsername(ctx, creatorUsername)
 		if err != nil {
-			return nil, err
+			return nil, apperrors.NewDatabaseQueryError(
+				"SELECT * FROM users WHERE username = $1",
+				creatorUsername,
+				err,
+			).WithOperation("group_creation_get_creator").
+				WithContext("step", "fetching_creator")
 		}
 
 		// Create group
@@ -78,7 +88,11 @@ func (gs *GroupService) CreateGroup(ctx context.Context, creatorUsername, name, 
 			CreatedBy:   creator.ID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, apperrors.NewDatabaseError("group_insert", err).
+				WithOperation("group_creation").
+				WithDetails("group_name", name).
+				WithDetails("creator_id", creator.ID).
+				WithContext("step", "inserting_group")
 		}
 
 		// Add creator as admin
@@ -90,7 +104,14 @@ func (gs *GroupService) CreateGroup(ctx context.Context, creatorUsername, name, 
 		if err != nil {
 			// Rollback - delete group
 			gs.qdb.DeleteGroup(ctx, group.ID)
-			return nil, err
+
+			return nil, apperrors.NewDatabaseError("group_member_insert", err).
+				WithOperation("group_creation_add_admin").
+				WithDetails("group_id", group.ID).
+				WithDetails("group_name", name).
+				WithDetails("creator_id", creator.ID).
+				WithContext("step", "adding_creator_as_admin").
+				WithContext("rollback", "group_deleted")
 		}
 
 		return &GroupInfo{
@@ -107,12 +128,21 @@ func (gs *GroupService) CreateGroup(ctx context.Context, creatorUsername, name, 
 	})
 
 	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"creator": creatorUsername,
-			"name":    name,
-			"error":   err.Error(),
-		}).Error("Circuit breaker: Failed to create group")
-		return nil, apperrors.NewDatabaseError("create group", err)
+		// Enrich with circuit breaker context
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			appErr.WithContext("circuit_breaker_state", gs.cb.State().String())
+			logger.WithFields(appErr.LogFields()).Error("Group creation failed")
+			return nil, appErr
+		}
+
+		// Wrap unknown errors
+		wrappedErr := apperrors.NewDatabaseError("group_creation", err).
+			WithDetails("creator", creatorUsername).
+			WithDetails("group_name", name).
+			WithContext("circuit_breaker_state", gs.cb.State().String())
+
+		logger.WithFields(wrappedErr.LogFields()).Error("Group creation failed")
+		return nil, wrappedErr
 	}
 
 	return result.(*GroupInfo), nil
