@@ -43,12 +43,6 @@ var (
 	testLogger *logger.Logger
 )
 
-func init() {
-	// Initialize test logger
-	testLogger = logger.New("./log/load_test.log")
-	testLogger.SetLevel(logger.DEBUG)
-}
-
 // TestConcurrentUserLogins tests authentication under load
 func TestConcurrentUserLogins(t *testing.T) {
 	if testing.Short() {
@@ -699,6 +693,7 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 	os.Setenv("RATE_LIMIT_CAPACITY", "10000")
 	os.Setenv("RATE_LIMIT_REFILL", "1000")
 
+	// Ensure log directory exists for server.log
 	os.Setenv("LOG_FILE", "./tests/load/log/server.log")
 
 	cfg, err := config.Load()
@@ -1024,6 +1019,8 @@ func connectWebSocket(addr, sessionID string) (*fastws.Conn, error) {
 
 	header := http.Header{}
 	header.Add("Cookie", fmt.Sprintf("session_id=%s", sessionID))
+	// Add Origin header to pass the strict origin validation in the server
+	header.Add("Origin", "http://localhost:3000")
 
 	dialer := fastws.Dialer{
 		HandshakeTimeout: 10 * time.Second,

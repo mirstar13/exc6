@@ -17,7 +17,6 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 	}
 
-	// Apply defaults
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}
@@ -37,44 +36,30 @@ func New(config ...Config) fiber.Handler {
 		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
 
-	// Parse KeyLookup
 	extractor := createExtractor(cfg.KeyLookup)
 
 	return func(c *fiber.Ctx) error {
-		// Skip if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
 		method := c.Method()
 		if method != "POST" && method != "PUT" && method != "DELETE" && method != "PATCH" {
-			// Safe methods (GET, HEAD, OPTIONS) don't need CSRF protection
 			return c.Next()
 		}
 
-		// Skip CSRF for public auth endpoints
 		path := c.Path()
 		if path == "/login" || path == "/register" || path == "/login-form" || path == "/register-form" {
 			return c.Next()
 		}
 
-		// Get session ID for token association
 		sessionID := c.Cookies("session_id")
 		if sessionID == "" {
 			// No session yet - skip CSRF check
-			logger.Debug("CSRF Validation: No session ID, skipping validation")
 			return c.Next()
 		}
 
-		// Extract token from request
 		token := extractor(c)
-
-		logger.WithFields(map[string]interface{}{
-			"method":       method,
-			"path":         path,
-			"session_id":   sessionID,
-			"token_length": len(token),
-		}).Debug("CSRF Validation: Validating request")
 
 		if token == "" {
 			logger.WithFields(map[string]interface{}{
@@ -103,9 +88,7 @@ func New(config ...Config) fiber.Handler {
 
 		if token != storedToken {
 			logger.WithFields(map[string]interface{}{
-				"session_id":          sessionID,
-				"token_length":        len(token),
-				"stored_token_length": len(storedToken),
+				"session_id": sessionID,
 			}).Warn("CSRF Validation: Token mismatch")
 
 			return cfg.ErrorHandler(c, apperrors.New(
@@ -114,12 +97,6 @@ func New(config ...Config) fiber.Handler {
 				fiber.StatusForbidden,
 			))
 		}
-
-		logger.WithFields(map[string]interface{}{
-			"method":     method,
-			"path":       path,
-			"session_id": sessionID,
-		}).Debug("CSRF Validation: Token valid")
 
 		// Token valid, continue
 		return c.Next()
@@ -137,17 +114,11 @@ func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (str
 		)
 	}
 
-	// Generate random token
 	token, err := generateRandomToken(32)
 	if err != nil {
 		logger.WithError(err).Error("CSRF: Failed to generate random token")
 		return "", err
 	}
-
-	logger.WithFields(map[string]interface{}{
-		"session_id":   sessionID,
-		"token_length": len(token),
-	}).Debug("CSRF: Generated random token")
 
 	// Store token associated with session
 	if err := storage.Set(sessionID, token, expiration); err != nil {
@@ -158,29 +129,20 @@ func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (str
 		return "", err
 	}
 
-	logger.WithField("session_id", sessionID).Debug("CSRF: Token stored in Redis")
-
-	// CRITICAL FIX: Don't set cookie as HTTPOnly and Secure for development
-	// The token should be accessible via meta tag, not cookie
-	// But we set it anyway as a backup
 	c.Cookie(&fiber.Cookie{
 		Name:     "csrf_token",
 		Value:    token,
 		Expires:  time.Now().Add(expiration),
-		HTTPOnly: false, // IMPORTANT: Allow JavaScript to read this
-		Secure:   false, // IMPORTANT: Allow HTTP (for development)
+		HTTPOnly: false,
+		Secure:   false,
 		SameSite: "Strict",
 		Path:     "/",
 	})
 
-	logger.WithField("session_id", sessionID).Debug("CSRF: Cookie set")
-
 	return token, nil
 }
 
-// createExtractor creates a function to extract the CSRF token based on KeyLookup
 func createExtractor(lookup string) func(*fiber.Ctx) string {
-	// Parse lookup format: "source:key"
 	parts := []rune(lookup)
 	var source, key string
 
@@ -220,7 +182,6 @@ func createExtractor(lookup string) func(*fiber.Ctx) string {
 	}
 }
 
-// generateRandomToken creates a cryptographically secure random token
 func generateRandomToken(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {

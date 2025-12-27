@@ -28,8 +28,8 @@ func setupLogging(app *fiber.App, cfg config.LogConfig) error {
 
 	// Setup Fiber logger middleware
 	app.Use(fiberlogger.New(fiberlogger.Config{
-		Format:     "${time} | ${status} | ${latency} | ${method} ${path} | ${ip}\n",
-		TimeFormat: "2006-01-02 15:04:05",
+		Format:     "[${time}] WEB: ${status} | ${latency} | ${method} ${path} | ${ip}\n",
+		TimeFormat: "2006-01-02 15:04:05.000",
 		TimeZone:   "Local",
 		Output:     httpLogger.OutputWriter, // Use the rotating writer
 	}))

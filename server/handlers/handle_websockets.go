@@ -10,6 +10,8 @@ import (
 	"exc6/services/calls"
 	"exc6/services/chat"
 	"exc6/services/groups"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -21,9 +23,10 @@ import (
 func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
-			// Validate Origin header
+			// Pre-check origin here as well for early rejection
 			origin := c.Get("Origin")
 			if !isAllowedOrigin(origin) {
+				logger.WithField("origin", origin).Warn("WebSocket upgrade rejected: Invalid Origin")
 				return fiber.ErrForbidden
 			}
 			c.Locals("allowed", true)
@@ -34,12 +37,21 @@ func HandleWebSocketUpgrade(wsManager *_websocket.Manager, csrv *chat.ChatServic
 }
 
 func isAllowedOrigin(origin string) bool {
-	// List of allowed origins for WebSocket connections
+	// 1. Check strict hardcoded local dev origins
 	allowedOrigins := []string{
 		"http://localhost:3000",
 		"http://localhost:8080",
 		"http://localhost:8000",
-		"https://yourdomain.com",
+		"https://localhost:3000",
+		"https://localhost:8080",
+		"https://localhost:8000",
+		// Add 127.0.0.1 explicitly as browsers treat it differently than localhost
+		"http://127.0.0.1:3000",
+		"http://127.0.0.1:8080",
+		"http://127.0.0.1:8000",
+		"https://127.0.0.1:3000",
+		"https://127.0.0.1:8080",
+		"https://127.0.0.1:8000",
 	}
 
 	for _, allowed := range allowedOrigins {
@@ -48,11 +60,32 @@ func isAllowedOrigin(origin string) bool {
 		}
 	}
 
+	// 2. Check environment variable for production domains
+	envAllowed := os.Getenv("ALLOWED_ORIGINS")
+	if envAllowed != "" {
+		origins := strings.Split(envAllowed, ",")
+		for _, allowed := range origins {
+			if origin == strings.TrimSpace(allowed) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
 // HandleWebSocket handles WebSocket connections for chat and calls
 func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, callService *calls.CallService, gsrv *groups.GroupService, qdb *db.Queries) fiber.Handler {
+	// Configure WebSocket with strict Origin validation inside the Upgrader
+	cfg := websocket.Config{
+		Origins: []string{"*"}, // We handle custom validation logic below or use specific list
+		// Custom filter to support dynamic list from env
+		Filter: func(c *fiber.Ctx) bool {
+			origin := c.Get("Origin")
+			return isAllowedOrigin(origin)
+		},
+	}
+
 	return websocket.New(func(conn *websocket.Conn) {
 		// Get username from locals (set by auth middleware)
 		username := conn.Locals("username").(string)
@@ -92,7 +125,7 @@ func HandleWebSocket(wsManager *_websocket.Manager, csrv *chat.ChatService, call
 		client.ReadPump() // Blocks until connection closes
 
 		logger.WithField("username", username).Info("WebSocket connection closed")
-	})
+	}, cfg)
 }
 
 // relayRedisToWebSocket relays messages from Redis Pub/Sub to WebSocket

@@ -147,6 +147,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to resolve icons directory: %w", err)
 	}
 
+	logFile, err := resolvePath(getEnv("LOG_FILE", "./log/server.log"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve log file path: %w", err)
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
@@ -199,7 +204,7 @@ func Load() (*Config, error) {
 			ConnectionString: getEnv("GOOSE_DBSTRING", ""),
 		},
 		Log: LogConfig{
-			Filename:   getEnv("LOG_FILE", "./log/server.log"),
+			Filename:   logFile,
 			MaxSize:    getEnvAsInt("LOG_MAX_SIZE", 100),
 			MaxBackups: getEnvAsInt("LOG_MAX_BACKUPS", 3),
 			MaxAge:     getEnvAsInt("LOG_MAX_AGE", 28),
@@ -277,6 +282,23 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimit.RefillPeriod <= 0 {
 		errors = append(errors, "rate limit refill period must be > 0")
+	}
+
+	// Log validation
+	if c.Log.Filename == "" {
+		errors = append(errors, "log filename (LOG_FILE) is required")
+	}
+
+	if c.Log.MaxSize <= 0 {
+		errors = append(errors, "log max size (LOG_MAX_SIZE) must be > 0")
+	}
+
+	if c.Log.MaxBackups < 0 {
+		errors = append(errors, "log max backups (LOG_MAX_BACKUPS) cannot be negative")
+	}
+
+	if c.Log.MaxAge < 0 {
+		errors = append(errors, "log max age (LOG_MAX_AGE) cannot be negative")
 	}
 
 	if len(errors) > 0 {

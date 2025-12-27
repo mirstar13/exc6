@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"container/list"
 	"context"
 	"exc6/pkg/breaker"
 	"exc6/pkg/logger"
@@ -59,9 +60,12 @@ func (s *Session) Unmarshal(data map[string]string) error {
 type SessionManager struct {
 	rdb *redis.Client
 	cb  *gobreaker.CircuitBreaker
-	// Use Mutex+Map instead of sync.Map to avoid Go 1.24 HashTrieMap panic
-	cache   map[string]*Session
-	cacheMu sync.RWMutex
+
+	// LRU Cache
+	cache     map[string]*list.Element
+	evictList *list.List
+	capacity  int
+	cacheMu   sync.RWMutex
 }
 
 func NewSessionManager(rdb *redis.Client) *SessionManager {
@@ -75,27 +79,50 @@ func NewSessionManager(rdb *redis.Client) *SessionManager {
 			Threshold:   0.5,
 			MinRequests: 5,
 		}),
-		cache: make(map[string]*Session),
+		cache:     make(map[string]*list.Element),
+		evictList: list.New(),
+		capacity:  10000, // Max 10k local sessions
 	}
+}
+
+func (smngr *SessionManager) updateCache(session *Session) {
+	smngr.cacheMu.Lock()
+	defer smngr.cacheMu.Unlock()
+
+	// Check if exists
+	if elem, ok := smngr.cache[session.SessionID]; ok {
+		smngr.evictList.MoveToFront(elem)
+		elem.Value = session
+		return
+	}
+
+	// Evict if full
+	if smngr.evictList.Len() >= smngr.capacity {
+		oldest := smngr.evictList.Back()
+		if oldest != nil {
+			smngr.evictList.Remove(oldest)
+			s := oldest.Value.(*Session)
+			delete(smngr.cache, s.SessionID)
+		}
+	}
+
+	// Add new
+	elem := smngr.evictList.PushFront(session)
+	smngr.cache[session.SessionID] = elem
 }
 
 func (smngr *SessionManager) SaveSession(ctx context.Context, session *Session) error {
 	// 1. Save to local cache synchronously (Critical for immediate consistency on this node)
-	smngr.cacheMu.Lock()
-	smngr.cache[session.SessionID] = session
-	smngr.cacheMu.Unlock()
+	smngr.updateCache(session)
 
 	// 2. Persist to Redis asynchronously (Write-Behind)
-	// This removes Redis network RTT and pool contention from the login latency.
 	go func() {
-		// Use a detached background context with its own timeout
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		sessionKey := "session:" + session.SessionID
 
 		_, err := breaker.ExecuteCtx(bgCtx, smngr.cb, func() (interface{}, error) {
-			// Use pipeline for efficiency (1 RTT instead of 2)
 			pipe := smngr.rdb.Pipeline()
 			pipe.HSet(bgCtx, sessionKey, session.Marshal())
 			pipe.Expire(bgCtx, sessionKey, 24*time.Hour)
@@ -130,7 +157,7 @@ func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (
 
 	sessionData := result.(map[string]string)
 
-	// 3. If Redis returns empty (might happen if async write hasn't finished yet), check local cache
+	// 3. If Redis returns empty, check local cache
 	if len(sessionData) == 0 {
 		return smngr.getFromLocalCache(sessionID)
 	}
@@ -141,21 +168,19 @@ func (smngr *SessionManager) GetSession(ctx context.Context, sessionID string) (
 	}
 
 	// Update local cache on successful read (Read-Through)
-	smngr.cacheMu.Lock()
-	smngr.cache[sessionID] = session
-	smngr.cacheMu.Unlock()
+	smngr.updateCache(session)
 
 	return session, nil
 }
 
-// Helper to get from local cache
+// Helper to get from local cache with LRU promotion
 func (smngr *SessionManager) getFromLocalCache(sessionID string) (*Session, error) {
-	smngr.cacheMu.RLock()
-	session, ok := smngr.cache[sessionID]
-	smngr.cacheMu.RUnlock()
+	smngr.cacheMu.Lock() // Write lock needed for MoveToFront
+	defer smngr.cacheMu.Unlock()
 
-	if ok {
-		return session, nil
+	if elem, ok := smngr.cache[sessionID]; ok {
+		smngr.evictList.MoveToFront(elem)
+		return elem.Value.(*Session), nil
 	}
 	return nil, nil // Not found in either
 }
@@ -203,7 +228,9 @@ func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, 
 
 	// Optimistic update for local cache
 	smngr.cacheMu.Lock()
-	if s, ok := smngr.cache[sessionID]; ok {
+	if elem, ok := smngr.cache[sessionID]; ok {
+		smngr.evictList.MoveToFront(elem)
+		s := elem.Value.(*Session)
 		if field == "last_activity" {
 			if t, err := strconv.ParseInt(value, 10, 64); err == nil {
 				s.LastActivity = t
@@ -212,18 +239,12 @@ func (smngr *SessionManager) UpdateSessionField(ctx context.Context, sessionID, 
 	}
 	smngr.cacheMu.Unlock()
 
-	// Update Redis async as well for performance, or keep sync if consistency is strict.
-	// For "last_activity" updates (heartbeats), async is usually preferred.
-	// For now keeping it sync based on original logic but pipeline could optimize it.
-
 	_, err := breaker.ExecuteCtx(ctx, smngr.cb, func() (interface{}, error) {
 		exists, err := smngr.rdb.Exists(ctx, sessionKey).Result()
 		if err != nil {
 			return nil, err
 		}
 		if exists == 0 {
-			// If not in Redis but in local, we might want to restore it?
-			// For now, respect Redis authority for updates.
 			return nil, fmt.Errorf("session not found: %s", sessionID)
 		}
 		return nil, smngr.rdb.HSet(ctx, sessionKey, field, value).Err()
@@ -246,8 +267,9 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 
 	// Renew local cache
 	smngr.cacheMu.Lock()
-	if s, ok := smngr.cache[sessionID]; ok {
-		s.LastActivity = time.Now().Unix()
+	if elem, ok := smngr.cache[sessionID]; ok {
+		smngr.evictList.MoveToFront(elem)
+		elem.Value.(*Session).LastActivity = time.Now().Unix()
 	}
 	smngr.cacheMu.Unlock()
 
@@ -281,10 +303,13 @@ func (smngr *SessionManager) RenewSession(ctx context.Context, sessionID string)
 func (smngr *SessionManager) DeleteSession(ctx context.Context, sessionID string) error {
 	// Delete from local cache
 	smngr.cacheMu.Lock()
-	delete(smngr.cache, sessionID)
+	if elem, ok := smngr.cache[sessionID]; ok {
+		smngr.evictList.Remove(elem)
+		delete(smngr.cache, sessionID)
+	}
 	smngr.cacheMu.Unlock()
 
-	// Fire and forget delete from Redis can be async too, but delete is usually fast.
+	// Fire and forget delete from Redis
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -297,7 +322,6 @@ func (smngr *SessionManager) DeleteSession(ctx context.Context, sessionID string
 	return nil
 }
 
-// GetMetrics returns circuit breaker metrics
 func (smngr *SessionManager) GetMetrics() map[string]interface{} {
 	state := smngr.cb.State()
 	counts := smngr.cb.Counts()

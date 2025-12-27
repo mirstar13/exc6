@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"container/list"
 	"context"
 	"exc6/apperrors"
 	"exc6/pkg/logger"
@@ -17,20 +18,25 @@ type Storage interface {
 	Delete(key string) error
 }
 
-// InMemoryStorage implements in-memory token storage
+// InMemoryStorage implements in-memory token storage with LRU eviction
 type InMemoryStorage struct {
-	mu     sync.RWMutex
-	tokens map[string]tokenEntry
+	mu        sync.RWMutex
+	tokens    map[string]*list.Element
+	evictList *list.List
+	capacity  int
 }
 
 type tokenEntry struct {
+	key        string
 	value      string
 	expiration time.Time
 }
 
 func NewInMemoryStorage() *InMemoryStorage {
 	storage := &InMemoryStorage{
-		tokens: make(map[string]tokenEntry),
+		tokens:    make(map[string]*list.Element),
+		evictList: list.New(),
+		capacity:  10000, // Limit to 10k tokens
 	}
 
 	// Cleanup expired tokens every 5 minutes
@@ -40,38 +46,70 @@ func NewInMemoryStorage() *InMemoryStorage {
 }
 
 func (s *InMemoryStorage) Get(key string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	entry, exists := s.tokens[key]
-	if !exists {
-		return "", apperrors.New(apperrors.ErrCodeNotFound, "Token not found", 404)
+	if elem, exists := s.tokens[key]; exists {
+		s.evictList.MoveToFront(elem)
+		entry := elem.Value.(*tokenEntry)
+
+		if time.Now().After(entry.expiration) {
+			return "", apperrors.New(apperrors.ErrCodeSessionExpired, "Token expired", 401)
+		}
+
+		return entry.value, nil
 	}
 
-	if time.Now().After(entry.expiration) {
-		return "", apperrors.New(apperrors.ErrCodeSessionExpired, "Token expired", 401)
-	}
-
-	return entry.value, nil
+	return "", apperrors.New(apperrors.ErrCodeNotFound, "Token not found", 404)
 }
 
 func (s *InMemoryStorage) Set(key string, value string, expiration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.tokens[key] = tokenEntry{
+	// Check for existing item
+	if elem, exists := s.tokens[key]; exists {
+		s.evictList.MoveToFront(elem)
+		entry := elem.Value.(*tokenEntry)
+		entry.value = value
+		entry.expiration = time.Now().Add(expiration)
+		return nil
+	}
+
+	// Evict if over capacity
+	if s.evictList.Len() >= s.capacity {
+		s.removeOldest()
+	}
+
+	// Add new item
+	entry := &tokenEntry{
+		key:        key,
 		value:      value,
 		expiration: time.Now().Add(expiration),
 	}
+	elem := s.evictList.PushFront(entry)
+	s.tokens[key] = elem
 
 	return nil
+}
+
+func (s *InMemoryStorage) removeOldest() {
+	elem := s.evictList.Back()
+	if elem != nil {
+		s.evictList.Remove(elem)
+		entry := elem.Value.(*tokenEntry)
+		delete(s.tokens, entry.key)
+	}
 }
 
 func (s *InMemoryStorage) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.tokens, key)
+	if elem, exists := s.tokens[key]; exists {
+		s.evictList.Remove(elem)
+		delete(s.tokens, key)
+	}
 	return nil
 }
 
@@ -82,9 +120,18 @@ func (s *InMemoryStorage) cleanup() {
 	for range ticker.C {
 		s.mu.Lock()
 		now := time.Now()
-		for key, entry := range s.tokens {
+		// Iterate backwards to safely remove while traversing (optional optimization,
+		// but simple iteration works too if we restart or carefully manage pointers)
+		// For simplicity, we just scan randomly or check the tail (LRU tail might be old but valid,
+		// while front might be expired if short TTL).
+		// A full scan is safer for strict expiration.
+		var next *list.Element
+		for elem := s.evictList.Front(); elem != nil; elem = next {
+			next = elem.Next()
+			entry := elem.Value.(*tokenEntry)
 			if now.After(entry.expiration) {
-				delete(s.tokens, key)
+				s.evictList.Remove(elem)
+				delete(s.tokens, entry.key)
 			}
 		}
 		s.mu.Unlock()
@@ -92,19 +139,23 @@ func (s *InMemoryStorage) cleanup() {
 }
 
 type RedisStorage struct {
-	client  *redis.Client
-	prefix  string
-	ttl     time.Duration
-	cacheMu sync.RWMutex
-	cache   map[string]tokenEntry
+	client    *redis.Client
+	prefix    string
+	ttl       time.Duration
+	cacheMu   sync.RWMutex
+	cache     map[string]*list.Element
+	evictList *list.List
+	capacity  int
 }
 
 func NewRedisStorage(client *redis.Client, ttl time.Duration) *RedisStorage {
 	return &RedisStorage{
-		client: client,
-		prefix: "csrf:",
-		ttl:    ttl,
-		cache:  make(map[string]tokenEntry),
+		client:    client,
+		prefix:    "csrf:",
+		ttl:       ttl,
+		cache:     make(map[string]*list.Element),
+		evictList: list.New(),
+		capacity:  5000, // Local cache size
 	}
 }
 
@@ -117,12 +168,7 @@ func (s *RedisStorage) Get(key string) (string, error) {
 
 	// 2. If Redis works, update local cache (Read-Through) and return
 	if err == nil {
-		s.cacheMu.Lock()
-		s.cache[key] = tokenEntry{
-			value:      val,
-			expiration: time.Now().Add(s.ttl), // Refresh TTL estimate
-		}
-		s.cacheMu.Unlock()
+		s.updateLocalCache(key, val, s.ttl)
 		return val, nil
 	}
 
@@ -130,11 +176,12 @@ func (s *RedisStorage) Get(key string) (string, error) {
 	if err != redis.Nil {
 		logger.WithField("error", err).Warn("CSRF Redis unavailable, checking local cache")
 
-		s.cacheMu.RLock()
-		entry, ok := s.cache[key]
-		s.cacheMu.RUnlock()
+		s.cacheMu.Lock() // Upgraded to Lock for LRU move
+		defer s.cacheMu.Unlock()
 
-		if ok {
+		if elem, ok := s.cache[key]; ok {
+			s.evictList.MoveToFront(elem)
+			entry := elem.Value.(*tokenEntry)
 			if time.Now().Before(entry.expiration) {
 				return entry.value, nil
 			}
@@ -148,17 +195,42 @@ func (s *RedisStorage) Get(key string) (string, error) {
 	return "", err
 }
 
+func (s *RedisStorage) updateLocalCache(key, value string, ttl time.Duration) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	if elem, exists := s.cache[key]; exists {
+		s.evictList.MoveToFront(elem)
+		entry := elem.Value.(*tokenEntry)
+		entry.value = value
+		entry.expiration = time.Now().Add(ttl)
+		return
+	}
+
+	if s.evictList.Len() >= s.capacity {
+		oldest := s.evictList.Back()
+		if oldest != nil {
+			s.evictList.Remove(oldest)
+			entry := oldest.Value.(*tokenEntry)
+			delete(s.cache, entry.key)
+		}
+	}
+
+	entry := &tokenEntry{
+		key:        key,
+		value:      value,
+		expiration: time.Now().Add(ttl),
+	}
+	elem := s.evictList.PushFront(entry)
+	s.cache[key] = elem
+}
+
 func (s *RedisStorage) Set(key string, value string, expiration time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	// 1. Always save to local cache
-	s.cacheMu.Lock()
-	s.cache[key] = tokenEntry{
-		value:      value,
-		expiration: time.Now().Add(expiration),
-	}
-	s.cacheMu.Unlock()
+	s.updateLocalCache(key, value, expiration)
 
 	// 2. Try saving to Redis
 	err := s.client.Set(ctx, s.prefix+key, value, expiration).Err()
@@ -181,7 +253,10 @@ func (s *RedisStorage) Delete(key string) error {
 
 	// 1. Delete from local cache
 	s.cacheMu.Lock()
-	delete(s.cache, key)
+	if elem, exists := s.cache[key]; exists {
+		s.evictList.Remove(elem)
+		delete(s.cache, key)
+	}
 	s.cacheMu.Unlock()
 
 	// 2. Delete from Redis

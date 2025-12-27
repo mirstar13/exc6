@@ -28,6 +28,7 @@ const (
 
 	// Persistent queue configuration
 	PersistentQueueKey = "chat:pending_messages"
+	ProcessingQueueKey = "chat:processing_messages"
 	MaxRetries         = 3
 	RetryBackoff       = 5 * time.Second
 )
@@ -101,6 +102,9 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 			MinRequests: 10,
 		}),
 	}
+
+	// Recover any messages left in processing state from previous crash
+	go cs.recoverProcessingMessages()
 
 	// Start background workers
 	cs.wg.Add(2)
@@ -220,71 +224,69 @@ func (cs *ChatService) persistMessageToQueue(ctx context.Context, msg *ChatMessa
 	return cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON).Err()
 }
 
-// processQueuedMessages with circuit breaker protection
-func (cs *ChatService) processQueuedMessages() {
-	ctx, cancel := context.WithTimeout(cs.ctx, 5*time.Second)
+// recoverProcessingMessages re-queues messages that were stuck in processing
+func (cs *ChatService) recoverProcessingMessages() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Check queue length with circuit breaker
-	result, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
-		return cs.rdb.LLen(ctx, PersistentQueueKey).Result()
+	for {
+		// Move from Processing back to Pending (Right to Right)
+		// LMOVE processing pending RIGHT RIGHT
+		_, err := cs.rdb.LMove(ctx, ProcessingQueueKey, PersistentQueueKey, "RIGHT", "RIGHT").Result()
+		if err == redis.Nil {
+			break
+		}
+		if err != nil {
+			logger.WithError(err).Error("Failed to recover processing messages")
+			break
+		}
+		logger.Info("Recovered orphaned message from processing queue")
+	}
+}
+
+// processQueuedMessages with Reliable Queue Pattern (LMOVE)
+func (cs *ChatService) processQueuedMessages() {
+	ctx, cancel := context.WithTimeout(cs.ctx, 10*time.Second)
+	defer cancel()
+
+	// 1. Reliable Move from Pending to Processing
+	msgResult, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
+		return cs.rdb.LMove(ctx, PersistentQueueKey, ProcessingQueueKey, "LEFT", "RIGHT").Result()
 	})
 
 	if err != nil {
-		logger.WithError(err).Warn("Circuit breaker: Failed to check queue length")
+		if err != redis.Nil {
+			logger.WithError(err).Warn("Circuit breaker: Failed to pop message (LMOVE)")
+		}
 		return
 	}
 
-	queueLen := result.(int64)
-	if queueLen == 0 {
+	msgJSON, ok := msgResult.(string)
+	if !ok || len(msgJSON) == 0 {
+		// Handle empty message to prevent unmarshal error
 		return
 	}
 
-	logger.WithField("queue_length", queueLen).Debug("Processing queued messages")
-
-	// Process up to 100 messages at a time
-	count := int64(100)
-	if queueLen < count {
-		count = queueLen
+	var msg ChatMessage
+	if err := json.Unmarshal([]byte(msgJSON), &msg); err != nil {
+		logger.WithField("error", err).Error("Failed to unmarshal queued message")
+		// Remove corrupted message
+		cs.rdb.LRem(ctx, ProcessingQueueKey, 1, msgJSON)
+		return
 	}
 
-	// Pop messages from queue with circuit breaker
-	for i := int64(0); i < count; i++ {
-		msgResult, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
-			return cs.rdb.LPop(ctx, PersistentQueueKey).Result()
-		})
-
-		if err != nil {
-			logger.WithError(err).Warn("Circuit breaker: Failed to pop message from queue")
-			break
+	// 2. Process (Send to Kafka)
+	if err := cs.sendToKafkaWithRetry(&msg, MaxRetries); err != nil {
+		logger.WithFields(map[string]any{
+			"message_id": msg.MessageID,
+			"error":      err.Error(),
+		}).Error("Failed to send queued message. It remains in Processing Queue for recovery.")
+		cs.incrementMetric("failed")
+	} else {
+		// 3. Success: Remove from Processing Queue
+		if _, err := cs.rdb.LRem(ctx, ProcessingQueueKey, 1, msgJSON).Result(); err != nil {
+			logger.WithError(err).Error("Failed to remove message from processing queue after success")
 		}
-
-		msgJSON := msgResult.(string)
-		var msg ChatMessage
-		if err := json.Unmarshal([]byte(msgJSON), &msg); err != nil {
-			logger.WithField("error", err).Error("Failed to unmarshal queued message")
-			continue
-		}
-
-		// Send to Kafka with retries and circuit breaker
-		if err := cs.sendToKafkaWithRetry(&msg, MaxRetries); err != nil {
-			logger.WithFields(map[string]any{
-				"message_id": msg.MessageID,
-				"error":      err.Error(),
-			}).Error("Failed to send queued message after retries")
-
-			// Put back in queue with circuit breaker
-			msgJSON, _ := json.Marshal(msg)
-			if _, putErr := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
-				return nil, cs.rdb.RPush(ctx, PersistentQueueKey, msgJSON).Err()
-			}); putErr != nil {
-				logger.WithError(putErr).Error("Circuit breaker: Failed to requeue message")
-			}
-
-			cs.incrementMetric("failed")
-			break
-		}
-
 		cs.incrementMetric("sent")
 	}
 }
