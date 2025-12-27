@@ -20,4 +20,26 @@ goose-down:
 	goose postgres postgres://postgres:postgres@localhost:5432/securechat?sslmode=disable down && \
 	goose postgres postgres://postgres:postgres@localhost:5432/securechat_test?sslmode=disable down
 
-.PHONY: docker-up docker-down goose-up goose-down build run
+
+# Run full load tests (takes time)
+test-load:
+	@echo "Running load tests..."
+	go test -v -timeout 30m -run "^Test.*Load|^Test.*Storm|^Test.*Performance" ./tests/load
+
+# Run short load tests
+test-load-short:
+	@echo "Running short load tests..."
+	go test -v -timeout 5m -short -run "^Test.*Load" ./tests/load
+
+# Run chaos engineering tests
+test-chaos:
+	@echo "Running chaos tests..."
+	@echo "Warning: This will pause/unpause Docker containers"
+	go test -v -timeout 15m -run "^Test.*Failover|^Test.*Chaos" ./tests/load
+
+# Run benchmarks
+bench-load:
+	@echo "Running load benchmarks..."
+	go test -bench=. -benchmem -benchtime=10s ./tests/load
+
+.PHONY: docker-up docker-down goose-up goose-down build run test-load test-load-short test-chaos bench-load

@@ -35,7 +35,4 @@ func (pr *PublicRoutes) Register(app *fiber.App) {
 	app.Post("/register", handlers.HandleUserRegister(pr.db))
 	app.Post("/login", handlers.HandleUserLogin(pr.db, pr.smngr))
 	app.Post("/logout", handlers.HandleUserLogout(pr.smngr))
-
-	// Development/testing routes
-	app.Get("/test/sse", handlers.HandleSSETest())
 }

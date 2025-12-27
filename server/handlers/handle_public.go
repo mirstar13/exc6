@@ -54,10 +54,3 @@ func HandleRegisterForm() fiber.Handler {
 		return c.Render("register", templateData)
 	}
 }
-
-// HandleSSETest renders the SSE testing page for development
-func HandleSSETest() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		return c.Render("test-sse", fiber.Map{})
-	}
-}
