@@ -353,25 +353,48 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
+
+		// Recover from panics to prevent server crash during connection storms
+		if r := recover(); r != nil {
+			logger.WithFields(map[string]interface{}{
+				"username": c.Username,
+				"error":    r,
+			}).Warn("Recovered from panic in WritePump")
+		}
+
 		c.Conn.Close()
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.Send:
+			// [FIX] Safety check before setting deadline
+			if c.Conn == nil {
+				return
+			}
+
+			// This SetWriteDeadline is often where the panic happens if connection is dead
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+
 			if !ok {
+				// The channel was closed by the manager
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
 			err := c.Conn.WriteJSON(message)
 			if err != nil {
-				logger.WithError(err).Error("WebSocket write error")
+				// Log at debug level to avoid spamming logs during load tests
+				logger.WithField("user", c.Username).Debug("WebSocket write error (client likely disconnected)")
 				return
 			}
 
 		case <-ticker.C:
+			// Safety check before setting deadline
+			if c.Conn == nil {
+				return
+			}
+
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

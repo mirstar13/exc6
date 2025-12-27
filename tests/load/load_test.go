@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,7 +34,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/pressly/goose/v3"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,7 +65,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 		requestTimeout = 5 * time.Second
 	)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"num_users":       numUsers,
 		"concurrency":     concurrency,
 		"request_timeout": requestTimeout,
@@ -81,7 +79,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 	users := createTestUsers(t, app, numUsers)
 	userCreationDuration := time.Since(startUserCreation)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"count":    len(users),
 		"duration": userCreationDuration,
 		"rate":     float64(len(users)) / userCreationDuration.Seconds(),
@@ -100,7 +98,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 	go func() {
 		for range progressTicker.C {
 			current := atomic.LoadInt64(&successCount) + atomic.LoadInt64(&failureCount)
-			testLogger.WithFields(map[string]interface{}{
+			testLogger.WithFields(map[string]any{
 				"completed": current,
 				"total":     numUsers,
 				"progress":  fmt.Sprintf("%.1f%%", float64(current)/float64(numUsers)*100),
@@ -134,14 +132,14 @@ func TestConcurrentUserLogins(t *testing.T) {
 			if err == nil {
 				atomic.AddInt64(&successCount, 1)
 				if userIdx%100 == 0 {
-					testLogger.WithFields(map[string]interface{}{
+					testLogger.WithFields(map[string]any{
 						"username": user.Username,
 						"latency":  latency,
 					}).Debug("Login successful")
 				}
 			} else {
 				atomic.AddInt64(&failureCount, 1)
-				testLogger.WithFields(map[string]interface{}{
+				testLogger.WithFields(map[string]any{
 					"username": user.Username,
 					"error":    err.Error(),
 					"latency":  latency,
@@ -159,7 +157,7 @@ func TestConcurrentUserLogins(t *testing.T) {
 	throughput := float64(numUsers) / totalDuration.Seconds()
 	successRate := float64(successCount) / float64(numUsers) * 100
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"total_users":    numUsers,
 		"concurrency":    concurrency,
 		"success":        successCount,
@@ -203,7 +201,7 @@ func TestMessageThroughput(t *testing.T) {
 		numReceivers = 100
 	)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"num_messages":  numMessages,
 		"num_senders":   numSenders,
 		"num_receivers": numReceivers,
@@ -232,7 +230,7 @@ func TestMessageThroughput(t *testing.T) {
 	go func() {
 		for range progressTicker.C {
 			current := atomic.LoadInt64(&sentCount) + atomic.LoadInt64(&failedCount)
-			testLogger.WithFields(map[string]interface{}{
+			testLogger.WithFields(map[string]any{
 				"sent":     atomic.LoadInt64(&sentCount),
 				"failed":   atomic.LoadInt64(&failedCount),
 				"progress": fmt.Sprintf("%.1f%%", float64(current)/float64(numMessages)*100),
@@ -252,18 +250,18 @@ func TestMessageThroughput(t *testing.T) {
 			receiver := receivers[rand.Intn(numReceivers)]
 			content := fmt.Sprintf("Load test message %d", rand.Int())
 
-			err := sendMessage(app, sender.SessionID, receiver.Username, content)
+			err := sendMessage(app, sender.SessionID, sender.CSRFToken, receiver.Username, content)
 			if err == nil {
 				atomic.AddInt64(&sentCount, 1)
 				if msgIdx%1000 == 0 {
-					testLogger.WithFields(map[string]interface{}{
+					testLogger.WithFields(map[string]any{
 						"from": sender.Username,
 						"to":   receiver.Username,
 					}).Debug("Message sent successfully")
 				}
 			} else {
 				atomic.AddInt64(&failedCount, 1)
-				testLogger.WithFields(map[string]interface{}{
+				testLogger.WithFields(map[string]any{
 					"from":  sender.Username,
 					"to":    receiver.Username,
 					"error": err.Error(),
@@ -282,7 +280,7 @@ func TestMessageThroughput(t *testing.T) {
 	throughput := float64(sentCount) / totalDuration.Seconds()
 	successRate := float64(sentCount) / float64(numMessages) * 100
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"total_messages": numMessages,
 		"sent":           sentCount,
 		"failed":         failedCount,
@@ -319,7 +317,7 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 		holdDuration   = 30 * time.Second
 	)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"num_connections": numConnections,
 		"hold_duration":   holdDuration,
 	}).Info("Test configuration")
@@ -347,7 +345,7 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 	// Progress reporting
 	go func() {
 		for range progressTicker.C {
-			testLogger.WithFields(map[string]interface{}{
+			testLogger.WithFields(map[string]any{
 				"connected":    atomic.LoadInt64(&connectedCount),
 				"disconnected": atomic.LoadInt64(&disconnectedCount),
 				"messages_rx":  atomic.LoadInt64(&messagesReceived),
@@ -368,7 +366,7 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 			ws, err := connectWebSocket(serverAddr, user.SessionID)
 			if err != nil {
 				atomic.AddInt64(&disconnectedCount, 1)
-				testLogger.WithFields(map[string]interface{}{
+				testLogger.WithFields(map[string]any{
 					"username": user.Username,
 					"error":    err.Error(),
 				}).Error("WebSocket connection failed")
@@ -384,24 +382,28 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), holdDuration)
 			defer cancel()
 
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					msg, err := receiveMessage(ws)
-					if err != nil {
-						// Check if it's a timeout error (which is expected due to ReadDeadline)
-						if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-							continue
-						}
-						// If it's another error (like connection closed), we stop trying to read
-						return
-					}
+			// Use a goroutine to close the connection when context triggers.
+			// This unblocks the read loop safely.
+			go func() {
+				<-ctx.Done()
+				// Send a close message instead of forcing the socket shut immediately.
+				// This gives the server a chance to process the close frame.
+				ws.WriteMessage(fastws.CloseMessage, fastws.FormatCloseMessage(fastws.CloseNormalClosure, ""))
+				time.Sleep(100 * time.Millisecond) // Give a tiny window for network flush
+				ws.Close()
+			}()
 
-					if msg != nil {
-						atomic.AddInt64(&messagesReceived, 1)
-					}
+			for {
+				// Read with a long deadline; we rely on ws.Close() (from context) to break the loop.
+				// Do NOT use a short deadline and retry, as that causes panics in the websocket library.
+				msg, err := receiveMessage(ws)
+				if err != nil {
+					// We expect an error when the connection is closed.
+					return
+				}
+
+				if msg != nil {
+					atomic.AddInt64(&messagesReceived, 1)
 				}
 			}
 		}(i)
@@ -417,7 +419,7 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 	connectionRate := float64(connectedCount) / totalDuration.Seconds()
 	successRate := float64(connectedCount) / float64(numConnections) * 100
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"target_connections": numConnections,
 		"connected":          connectedCount,
 		"failed":             disconnectedCount,
@@ -455,7 +457,7 @@ func TestDatabaseQueryPerformance(t *testing.T) {
 		concurrency = 50
 	)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"num_queries": numQueries,
 		"concurrency": concurrency,
 	}).Info("Test configuration")
@@ -502,7 +504,7 @@ func TestDatabaseQueryPerformance(t *testing.T) {
 				} else {
 					stats.FailureCount++
 					if queryIdx%100 == 0 {
-						testLogger.WithFields(map[string]interface{}{
+						testLogger.WithFields(map[string]any{
 							"query": qt.name,
 							"error": err.Error(),
 						}).Debug("Query error")
@@ -524,7 +526,7 @@ func TestDatabaseQueryPerformance(t *testing.T) {
 		wg.Wait()
 		stats.TotalDuration = time.Since(startTime)
 
-		testLogger.WithFields(map[string]interface{}{
+		testLogger.WithFields(map[string]any{
 			"query_type": qt.name,
 			"completed":  stats.SuccessCount + stats.FailureCount,
 			"success":    stats.SuccessCount,
@@ -541,7 +543,7 @@ func TestDatabaseQueryPerformance(t *testing.T) {
 		qps := float64(stats.SuccessCount) / stats.TotalDuration.Seconds()
 		successRate := float64(stats.SuccessCount) / float64(totalQueries) * 100
 
-		testLogger.WithFields(map[string]interface{}{
+		testLogger.WithFields(map[string]any{
 			"query":        name,
 			"success":      stats.SuccessCount,
 			"failures":     stats.FailureCount,
@@ -583,7 +585,7 @@ func TestRedisFailover(t *testing.T) {
 
 	// Phase 1: Normal operation
 	testLogger.Info("Phase 1: Testing normal operation")
-	err := sendMessage(app, user.SessionID, "testuser", "baseline message")
+	err := sendMessage(app, user.SessionID, user.CSRFToken, "testuser", "baseline message")
 	require.NoError(t, err)
 	testLogger.Info("Baseline message sent successfully")
 
@@ -597,7 +599,7 @@ func TestRedisFailover(t *testing.T) {
 
 	// Messages should queue but not fail
 	testLogger.Info("Attempting to send message during Redis outage")
-	err = sendMessage(app, user.SessionID, "testuser", "during outage")
+	err = sendMessage(app, user.SessionID, user.CSRFToken, "testuser", "during outage")
 	assert.NoError(t, err, "Messages should queue during Redis outage")
 	testLogger.Info("Message queued successfully during outage")
 
@@ -609,13 +611,13 @@ func TestRedisFailover(t *testing.T) {
 
 	// Verify recovery
 	testLogger.Info("Verifying system recovery")
-	err = sendMessage(app, user.SessionID, "testuser", "after recovery")
+	err = sendMessage(app, user.SessionID, user.CSRFToken, "testuser", "after recovery")
 	assert.NoError(t, err, "Messages should work after Redis recovery")
 	testLogger.Info("Post-recovery message sent successfully")
 
 	// Check circuit breaker metrics
 	metrics := getCircuitBreakerMetrics(t, app)
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"metrics": metrics,
 	}).Info("Circuit Breaker State After Failover")
 
@@ -639,6 +641,7 @@ type TestUser struct {
 	Username  string
 	Password  string
 	SessionID string
+	CSRFToken string
 }
 
 type TestApp struct {
@@ -657,31 +660,28 @@ type TestDB struct {
 func setupTestApp(t *testing.T) (*TestApp, func()) {
 	testLogger.Info("Setting up test application")
 
-	os.Setenv("GOOSE_DBSTRING", "postgres://postgres:postgres@localhost:5433/securechat_test?sslmode=disable")
-	os.Setenv("REDIS_ADDR", "localhost:6380")
+	os.Setenv("GOOSE_DBSTRING", "postgres://postgres:postgres@127.0.0.1:5433/securechat_test?sslmode=disable")
+	os.Setenv("REDIS_ADDR", "127.0.0.1:6380")
 	os.Setenv("REDIS_PASSWORD", "")
-	os.Setenv("KAFKA_ADDR", "localhost:9093")
+	os.Setenv("KAFKA_ADDR", "127.0.0.1:9093")
 
-	// Increase rate limits for load testing to prevent 429 errors during user creation
+	// Increase rate limits for load testing to prevent errors during user creation
 	os.Setenv("RATE_LIMIT_CAPACITY", "10000")
 	os.Setenv("RATE_LIMIT_REFILL", "1000")
 
+	os.Setenv("LOG_FILE", "./tests/load/log/server.log")
+
 	cfg, err := config.Load()
-	cfg.Server.LogFile = "C:/MyFiles/Code/Go/learn/redis/exc6/tests/load/log/server.log"
 	require.NoError(t, err, "Failed to load test config")
 
 	dbString := os.Getenv("GOOSE_DBSTRING")
 	require.NotEmpty(t, dbString, "GOOSE_DBSTRING should not be empty")
 
-	testLogger.WithFields(map[string]interface{}{
-		"db_addr":    "localhost:5433",
+	testLogger.WithFields(map[string]any{
+		"db_addr":    "127.0.0.1:5433",
 		"redis_addr": cfg.Redis.Address,
 		"kafka_addr": cfg.Kafka.Address,
 	}).Info("Test infrastructure configured")
-
-	testLogger.Info("Running database migrations")
-	err = runMigrations(cfg.Database.ConnectionString)
-	require.NoError(t, err, "Failed to run migrations")
 
 	testLogger.Info("Opening database connection")
 	dbConn, err := sql.Open("postgres", dbString)
@@ -692,7 +692,7 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 	dbConn.SetMaxIdleConns(10)
 	dbConn.SetConnMaxLifetime(time.Hour)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"max_open_conns": 100,
 		"max_idle_conns": 10,
 	}).Info("Database connection pool configured")
@@ -755,7 +755,7 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 func setupTestDB(t *testing.T) (*TestDB, func()) {
 	testLogger.Info("Setting up test database")
 
-	connStr := "postgres://postgres:postgres@localhost:5433/securechat_test?sslmode=disable"
+	connStr := os.Getenv("GOOSE_DBSTRING")
 
 	dbConn, err := sql.Open("postgres", connStr)
 	require.NoError(t, err, "Failed to connect to test database")
@@ -765,7 +765,7 @@ func setupTestDB(t *testing.T) (*TestDB, func()) {
 	dbConn.SetMaxIdleConns(10)
 	dbConn.SetConnMaxLifetime(time.Hour)
 
-	testLogger.WithFields(map[string]interface{}{
+	testLogger.WithFields(map[string]any{
 		"max_open_conns": 100,
 		"max_idle_conns": 10,
 	}).Info("Database connection pool configured")
@@ -795,52 +795,6 @@ func setupTestDB(t *testing.T) (*TestDB, func()) {
 	}, cleanup
 }
 
-func runMigrations(connStr string) error {
-	testLogger.Info("Starting database migration")
-
-	migrateDB, err := sql.Open("postgres", connStr)
-	if err != nil {
-		testLogger.WithError(err).Error("Failed to open database for migrations")
-		return fmt.Errorf("failed to open database for migrations: %w", err)
-	}
-	defer migrateDB.Close()
-
-	wd, err := os.Getwd()
-	if err != nil {
-		testLogger.WithError(err).Error("Failed to get working directory")
-		return fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	projectRoot := filepath.Join(wd, "..", "..")
-	projectRoot, err = filepath.Abs(projectRoot)
-	if err != nil {
-		testLogger.WithError(err).Error("Failed to get absolute path")
-		return fmt.Errorf("failed to get absolute path: %w", err)
-	}
-
-	migrationsDir := filepath.Join(projectRoot, "sql", "schema")
-
-	if _, err := os.Stat(migrationsDir); os.IsNotExist(err) {
-		testLogger.WithField("path", migrationsDir).Error("Migrations directory not found")
-		return fmt.Errorf("migrations directory not found at: %s", migrationsDir)
-	}
-
-	testLogger.WithField("path", migrationsDir).Info("Running migrations from directory")
-
-	if err := goose.SetDialect("postgres"); err != nil {
-		testLogger.WithError(err).Error("Failed to set goose dialect")
-		return fmt.Errorf("failed to set goose dialect: %w", err)
-	}
-
-	if err := goose.Up(migrateDB, migrationsDir); err != nil {
-		testLogger.WithError(err).Error("Failed to run migrations")
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	testLogger.Info("Migrations completed successfully")
-	return nil
-}
-
 func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
 	testLogger.WithField("count", count).Info("Creating test users")
 
@@ -863,7 +817,7 @@ func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			testLogger.WithFields(map[string]interface{}{
+			testLogger.WithFields(map[string]any{
 				"username":    username,
 				"status_code": resp.StatusCode,
 				"body":        string(body),
@@ -871,17 +825,18 @@ func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
 			require.Equal(t, http.StatusOK, resp.StatusCode, "Registration failed for %s: %s", username, string(body))
 		}
 
-		sessionID, err := loginUser(app, username, password)
+		sessionID, csrfToken, err := loginUser(app, username, password)
 		require.NoError(t, err, "Failed to login user %s", username)
 
 		users[i] = TestUser{
 			Username:  username,
 			Password:  password,
 			SessionID: sessionID,
+			CSRFToken: csrfToken,
 		}
 
 		if (i+1)%100 == 0 {
-			testLogger.WithFields(map[string]interface{}{
+			testLogger.WithFields(map[string]any{
 				"created": i + 1,
 				"total":   count,
 			}).Debug("User creation progress")
@@ -892,7 +847,9 @@ func createTestUsers(t *testing.T, app *TestApp, count int) []TestUser {
 	return users
 }
 
-func loginUser(app *TestApp, username, password string) (string, error) {
+// Returns sessionID, csrfToken, error
+func loginUser(app *TestApp, username, password string) (string, string, error) {
+	// 1. Perform Login
 	form := url.Values{}
 	form.Add("username", username)
 	form.Add("password", password)
@@ -902,21 +859,47 @@ func loginUser(app *TestApp, username, password string) (string, error) {
 
 	resp, err := app.App.Test(req, -1)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("login failed with status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("login failed with status %d", resp.StatusCode)
 	}
 
-	cookies := resp.Cookies()
-	for _, cookie := range cookies {
+	// Capture Session ID
+	var sessionID string
+	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "session_id" {
-			return cookie.Value, nil
+			sessionID = cookie.Value
+		}
+	}
+	if sessionID == "" {
+		return "", "", fmt.Errorf("no session cookie found")
+	}
+
+	// 2. Perform GET / to acquire CSRF token
+	// The middleware generates the token on GET requests to protected pages
+	req = httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
+
+	resp, err = app.App.Test(req, -1)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to fetch dashboard for csrf: %w", err)
+	}
+
+	var csrfToken string
+	for _, cookie := range resp.Cookies() {
+		// MATCH THE SERVER CONFIG: "csrf_token"
+		if cookie.Name == "csrf_token" {
+			csrfToken = cookie.Value
 		}
 	}
 
-	return "", fmt.Errorf("no session cookie found")
+	// Optional: If token not in cookie, check headers (if your app sets it there)
+	if csrfToken == "" {
+		csrfToken = resp.Header.Get("X-CSRF-Token")
+	}
+
+	return sessionID, csrfToken, nil
 }
 
 func attemptLogin(ctx context.Context, app *TestApp, username, password string) error {
@@ -941,16 +924,30 @@ func attemptLogin(ctx context.Context, app *TestApp, username, password string) 
 	return nil
 }
 
-func sendMessage(app *TestApp, sessionID, recipient, content string) error {
+func sendMessage(app *TestApp, sessionID, csrfToken, recipient, content string) error {
 	form := url.Values{}
 	form.Add("content", content)
 
 	req := httptest.NewRequest("POST", "/chat/"+recipient, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// 1. Add Session Cookie
 	req.AddCookie(&http.Cookie{
 		Name:  "session_id",
 		Value: sessionID,
 	})
+
+	// 2. Add CSRF Token
+	if csrfToken != "" {
+		// Standard Header
+		req.Header.Set("X-CSRF-Token", csrfToken)
+
+		// Cookie
+		req.AddCookie(&http.Cookie{
+			Name:  "csrf_token",
+			Value: csrfToken,
+		})
+	}
 
 	resp, err := app.App.Test(req, -1)
 	if err != nil {
@@ -1011,10 +1008,12 @@ func connectWebSocket(addr, sessionID string) (*fastws.Conn, error) {
 	return conn, nil
 }
 
-func receiveMessage(ws *fastws.Conn) (interface{}, error) {
-	ws.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+func receiveMessage(ws *fastws.Conn) (any, error) {
+	// Use a long deadline to avoid timeout errors which break the connection state
+	// in fasthttp/websocket. Cancellation is handled by closing the connection.
+	ws.SetReadDeadline(time.Now().Add(5 * time.Minute))
 
-	var msg map[string]interface{}
+	var msg map[string]any
 	err := ws.ReadJSON(&msg)
 	return msg, err
 }
@@ -1103,7 +1102,7 @@ func startRedis(t *testing.T) {
 	testLogger.Info("Redis container unpaused")
 }
 
-func getCircuitBreakerMetrics(t *testing.T, app *TestApp) map[string]interface{} {
+func getCircuitBreakerMetrics(t *testing.T, app *TestApp) map[string]any {
 	req := httptest.NewRequest("GET", "/metrics", nil)
 
 	resp, err := app.App.Test(req, -1)
@@ -1126,7 +1125,7 @@ func getCircuitBreakerMetrics(t *testing.T, app *TestApp) map[string]interface{}
 		return nil
 	}
 
-	var metrics map[string]interface{}
+	var metrics map[string]any
 	if err := json.Unmarshal(body, &metrics); err != nil {
 		testLogger.WithError(err).Error("Failed to parse metrics JSON")
 		t.Logf("Failed to parse metrics JSON: %v", err)
@@ -1170,7 +1169,7 @@ func BenchmarkSendMessage(b *testing.B) {
 		for pb.Next() {
 			sender := users[rand.Intn(len(users))]
 			receiver := users[rand.Intn(len(users))]
-			_ = sendMessage(app, sender.SessionID, receiver.Username, "benchmark message")
+			_ = sendMessage(app, sender.SessionID, sender.CSRFToken, receiver.Username, "benchmark message")
 		}
 	})
 
