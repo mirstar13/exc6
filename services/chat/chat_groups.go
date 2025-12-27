@@ -46,7 +46,8 @@ func (cs *ChatService) SendGroupMessage(ctx context.Context, from, groupID, cont
 	pipe.Expire(ctx, cacheKey, MessageCacheTTL)
 
 	// 2. Publish
-	pipe.Publish(ctx, "chat:messages", msgJSON)
+	groupChannel := fmt.Sprintf("chat:group:%s", msg.GroupID)
+	pipe.Publish(ctx, groupChannel, msgJSON)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		logger.WithError(err).Error("Failed to pipeline group message")

@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -62,26 +63,60 @@ func New(config ...Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		key := cfg.KeyGenerator(c)
 
-		// Get or create bucket for this key
-		bucket, err := cfg.Storage.Get(key)
-		if err != nil {
-			return err
+		var bucket *TokenBucket
+		var err error
+
+		// Retry loop for handling race conditions during bucket creation
+		for attempts := 0; attempts < 3; attempts++ {
+			// Get or create bucket for this key
+			bucket, err = cfg.Storage.Get(key)
+			if err != nil {
+				return err
+			}
+
+			if bucket != nil {
+				// Bucket exists, proceed to token consumption
+				break
+			}
+
+			// Bucket doesn't exist, create a new one
+			newBucket := NewTokenBucket(cfg.Capacity, cfg.RefillRate, cfg.RefillPeriod)
+
+			// Try to atomically set the bucket if it doesn't exist
+			// This prevents race conditions where multiple goroutines create buckets
+			created, err := cfg.Storage.SetIfNotExists(key, newBucket)
+			if err != nil {
+				return err
+			}
+
+			if created {
+				// We successfully created the bucket
+				bucket = newBucket
+				break
+			}
+
+			// Another goroutine created the bucket first, retry to get it
+			// The retry will fetch the bucket that was just created by another goroutine
 		}
 
 		if bucket == nil {
-			bucket = NewTokenBucket(cfg.Capacity, cfg.RefillRate, cfg.RefillPeriod)
-			// Don't save yet, wait until we take a token
+			// This should never happen after retries, but handle defensively
+			return fiber.ErrInternalServerError
 		}
 
 		// Try to take a token
-		took := bucket.Take(1)
+		allowed := bucket.Take(1)
 
+		// Save the updated bucket state back to storage
 		if err := cfg.Storage.Set(key, bucket); err != nil {
 			return err
 		}
 
-		if !took {
-			return cfg.LimitReachedHandler(c)
+		if !allowed {
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatInt(int64(cfg.RefillPeriod.Seconds()), 10))
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Rate limit exceeded. Please try again later.",
+			})
 		}
 
 		return c.Next()
