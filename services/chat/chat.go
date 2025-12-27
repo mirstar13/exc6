@@ -13,6 +13,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
 const (
@@ -39,6 +40,10 @@ type ChatService struct {
 	wg            sync.WaitGroup
 	ctx           context.Context    // Background context for workers
 	cancel        context.CancelFunc // Cancel function for graceful shutdown
+
+	// Circuit breakers
+	cbRedis *gobreaker.CircuitBreaker
+	cbKafka *gobreaker.CircuitBreaker
 
 	// Metrics for monitoring
 	metrics struct {
@@ -75,6 +80,12 @@ func NewChatService(ctx context.Context, rdb *redis.Client, qdb *db.Queries, kaf
 		shutdownChan:  make(chan struct{}),
 		ctx:           bgCtx,
 		cancel:        cancel,
+		cbRedis: gobreaker.NewCircuitBreaker(gobreaker.Settings{
+			Name: "redis-caht",
+		}),
+		cbKafka: gobreaker.NewCircuitBreaker(gobreaker.Settings{
+			Name: "kafka-chat",
+		}),
 	}
 
 	// Start background workers
@@ -96,23 +107,33 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 	}
 
 	// 1. Cache message in Redis immediately for read consistency
-	if err := cs.cacheMessage(ctx, msg); err != nil {
+	if _, err := cs.cbRedis.Execute(func() (any, error) {
+		return nil, cs.cacheMessage(ctx, msg)
+	}); err != nil {
 		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"from":       msg.FromID,
 			"to":         msg.ToID,
 			"error":      err.Error(),
-		}).Error("Failed to cache message")
+		}).Error("Circuit Breaker: Failed to cache message")
 	}
 
 	// 1.5 Increment unread count for the recipient
-	if err := cs.IncrementUnreadCount(ctx, to, from); err != nil {
-		logger.WithError(err).Warn("Failed to increment unread count")
+	if _, err := cs.cbRedis.Execute(func() (any, error) {
+		return nil, cs.IncrementUnreadCount(ctx, to, from)
+	}); err != nil {
+		logger.WithFields(map[string]any{
+			"message_id": msg.MessageID,
+			"from":       msg.FromID,
+			"to":         msg.ToID,
+			"error":      err.Error(),
+		}).Warn("Circuit Breaker: Failed to increment unread count")
 	}
 
 	// 2. Try to buffer message (non-blocking)
 	select {
 	case cs.messageBuffer <- msg:
+
 		cs.incrementMetric("queued")
 	default:
 		// Buffer full - persist to Redis queue instead
@@ -121,7 +142,13 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 			"buffer_size": len(cs.messageBuffer),
 		}).Warn("Message buffer full, persisting to Redis queue")
 
-		if err := cs.persistMessageToQueue(ctx, msg); err != nil {
+		if _, err := cs.cbRedis.Execute(func() (any, error) {
+			return nil, cs.persistMessageToQueue(ctx, msg)
+		}); err != nil {
+			logger.WithFields(map[string]any{
+				"message_id": msg.MessageID,
+				"error":      err.Error(),
+			}).Error("Circuit Breaker: Failed to persist message to queue")
 			cs.incrementMetric("failed")
 			return nil, fmt.Errorf("failed to persist message: %w", err)
 		}
@@ -130,12 +157,14 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 
 	// 3. Publish to Redis Pub/Sub for real-time delivery (best effort)
 	msgJSON, _ := json.Marshal(msg)
-	if err := cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err(); err != nil {
+	if _, err := cs.cbRedis.Execute(func() (any, error) {
+		return nil, cs.rdb.Publish(ctx, "chat:messages", msgJSON).Err()
+	}); err != nil {
 		logger.WithFields(map[string]any{
 			"message_id": msg.MessageID,
 			"channel":    "chat:messages",
 			"error":      err.Error(),
-		}).Warn("Failed to publish message to Redis Pub/Sub")
+		}).Warn("Circuit Breaker: Failed to publish message to Redis Pub/Sub")
 		// Don't fail - message is still queued
 	}
 
@@ -372,7 +401,16 @@ func (cs *ChatService) GetMetrics() map[string]int64 {
 }
 
 func (cs *ChatService) SubscribeToMessages(ctx context.Context) *redis.PubSub {
-	return cs.rdb.Subscribe(ctx, "chat:messages")
+	result, err := cs.cbRedis.Execute(func() (any, error) {
+		return cs.rdb.Subscribe(ctx, "chat:messages"), nil
+	})
+
+	if err != nil {
+		logger.WithField("error", err).Error("Circuit Breaker: Redis unavailable for subscription")
+		return nil
+	}
+
+	return result.(*redis.PubSub)
 }
 
 func getChatKey(user1, user2 string) string {
