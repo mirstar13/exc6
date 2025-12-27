@@ -247,10 +247,6 @@ func (m *Manager) sendGroupMessage(message *Message) {
 
 	// Iterate over MEMBERS, not CLIENTS
 	for _, member := range members {
-		if member.Username == message.From {
-			continue
-		}
-
 		m.mu.RLock()
 		client, isLocal := m.clients[member.Username]
 		m.mu.RUnlock()
