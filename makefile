@@ -44,6 +44,6 @@ test-chaos:
 bench-load:
 	@cd docker && docker-compose -f docker-compose.test.yml up -d --remove-orphans
 	@echo "Running load benchmarks..."
-	go test -bench=. -benchmem -benchtime=10s ./tests/load
+	go test -timeout 30m -bench=. -benchmem -benchtime=10s -run "^Benchmark" ./tests/load
 
 .PHONY: docker-up docker-down goose-up goose-down build run test-load test-load-short test-chaos bench-load

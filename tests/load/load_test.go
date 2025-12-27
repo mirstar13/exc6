@@ -92,19 +92,30 @@ func TestConcurrentUserLogins(t *testing.T) {
 		wg             sync.WaitGroup
 		progressTicker = time.NewTicker(2 * time.Second)
 	)
-	defer progressTicker.Stop()
+
+	// Create a channel to signal completion
+	done := make(chan struct{})
+	defer func() {
+		progressTicker.Stop()
+		close(done)
+	}()
 
 	// Progress reporting goroutine
 	go func() {
-		for range progressTicker.C {
-			current := atomic.LoadInt64(&successCount) + atomic.LoadInt64(&failureCount)
-			testLogger.WithFields(map[string]any{
-				"completed": current,
-				"total":     numUsers,
-				"progress":  fmt.Sprintf("%.1f%%", float64(current)/float64(numUsers)*100),
-				"success":   atomic.LoadInt64(&successCount),
-				"failures":  atomic.LoadInt64(&failureCount),
-			}).Info("Login test progress")
+		for {
+			select {
+			case <-progressTicker.C:
+				current := atomic.LoadInt64(&successCount) + atomic.LoadInt64(&failureCount)
+				testLogger.WithFields(map[string]any{
+					"completed": current,
+					"total":     numUsers,
+					"progress":  fmt.Sprintf("%.1f%%", float64(current)/float64(numUsers)*100),
+					"success":   atomic.LoadInt64(&successCount),
+					"failures":  atomic.LoadInt64(&failureCount),
+				}).Info("Login test progress")
+			case <-done:
+				return
+			}
 		}
 	}()
 
@@ -224,17 +235,26 @@ func TestMessageThroughput(t *testing.T) {
 		wg             sync.WaitGroup
 		progressTicker = time.NewTicker(2 * time.Second)
 	)
-	defer progressTicker.Stop()
+	done := make(chan struct{})
+	defer func() {
+		progressTicker.Stop()
+		close(done)
+	}()
 
 	// Progress reporting
 	go func() {
-		for range progressTicker.C {
-			current := atomic.LoadInt64(&sentCount) + atomic.LoadInt64(&failedCount)
-			testLogger.WithFields(map[string]any{
-				"sent":     atomic.LoadInt64(&sentCount),
-				"failed":   atomic.LoadInt64(&failedCount),
-				"progress": fmt.Sprintf("%.1f%%", float64(current)/float64(numMessages)*100),
-			}).Info("Message sending progress")
+		for {
+			select {
+			case <-progressTicker.C:
+				current := atomic.LoadInt64(&sentCount) + atomic.LoadInt64(&failedCount)
+				testLogger.WithFields(map[string]any{
+					"sent":     atomic.LoadInt64(&sentCount),
+					"failed":   atomic.LoadInt64(&failedCount),
+					"progress": fmt.Sprintf("%.1f%%", float64(current)/float64(numMessages)*100),
+				}).Info("Message sending progress")
+			case <-done:
+				return
+			}
 		}
 	}()
 
@@ -340,16 +360,26 @@ func TestWebSocketConnectionStorm(t *testing.T) {
 		wg                sync.WaitGroup
 		progressTicker    = time.NewTicker(5 * time.Second)
 	)
-	defer progressTicker.Stop()
+
+	done := make(chan struct{})
+	defer func() {
+		progressTicker.Stop()
+		close(done)
+	}()
 
 	// Progress reporting
 	go func() {
-		for range progressTicker.C {
-			testLogger.WithFields(map[string]any{
-				"connected":    atomic.LoadInt64(&connectedCount),
-				"disconnected": atomic.LoadInt64(&disconnectedCount),
-				"messages_rx":  atomic.LoadInt64(&messagesReceived),
-			}).Info("WebSocket connection status")
+		for {
+			select {
+			case <-progressTicker.C:
+				testLogger.WithFields(map[string]any{
+					"connected":    atomic.LoadInt64(&connectedCount),
+					"disconnected": atomic.LoadInt64(&disconnectedCount),
+					"messages_rx":  atomic.LoadInt64(&messagesReceived),
+				}).Info("WebSocket connection status")
+			case <-done:
+				return
+			}
 		}
 	}()
 

@@ -131,6 +131,11 @@ func (m *Manager) subscribeToGlobalBroadcast() {
 	for {
 		select {
 		case msg := <-ch:
+			if msg == nil {
+				logger.Warn("Redis PubSub channel closed, stopping subscription")
+				return
+			}
+
 			var message Message
 			if err := json.Unmarshal([]byte(msg.Payload), &message); err != nil {
 				logger.WithError(err).Error("Failed to unmarshal redis message")
