@@ -80,7 +80,7 @@ func run() error {
 	gsrv := groups.NewGroupService(dbqueries)
 	log.Println("✓ Initialized group service")
 
-	websocketManager := websocket.NewManager(context.Background())
+	websocketManager := websocket.NewManager(context.Background(), rdb)
 	log.Println("✓ Initialized WebSocket manager")
 
 	callsSrv := calls.NewCallService(context.Background(), rdb)

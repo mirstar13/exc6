@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"exc6/apperrors"
 	"exc6/pkg/logger"
 	"exc6/services/groups"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // MessageType represents different WebSocket message types
@@ -27,6 +29,10 @@ const (
 	MessageTypeCallRinging  MessageType = "call_ringing"
 	MessageTypePing         MessageType = "ping"
 	MessageTypePong         MessageType = "pong"
+
+	// Redis Channels
+	PubSubChannelGlobal = "ws:broadcast:global"
+	PubSubPrefixUser    = "ws:user:"
 )
 
 // Message represents a WebSocket message
@@ -61,10 +67,11 @@ type Manager struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	groupService *groups.GroupService
+	rdb          *redis.Client
 }
 
 // NewManager creates a new WebSocket manager
-func NewManager(ctx context.Context) *Manager {
+func NewManager(ctx context.Context, rdb *redis.Client) *Manager {
 	bgCtx, cancel := context.WithCancel(context.Background())
 
 	m := &Manager{
@@ -75,20 +82,20 @@ func NewManager(ctx context.Context) *Manager {
 		mu:         &sync.RWMutex{},
 		ctx:        bgCtx,
 		cancel:     cancel,
+		rdb:        rdb,
 	}
 
 	go m.run()
+	go m.subscribeToGlobalBroadcast()
 	return m
 }
 
-// [FIX] Method to inject group service for membership checks
 func (m *Manager) SetGroupService(gs *groups.GroupService) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.groupService = gs
 }
 
-// run handles client registration, unregistration, and message broadcasting
 func (m *Manager) run() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -114,128 +121,176 @@ func (m *Manager) run() {
 	}
 }
 
-// RegisterClient Registers a new client
+// subscribeToGlobalBroadcast listens for messages published by other server instances
+func (m *Manager) subscribeToGlobalBroadcast() {
+	pubsub := m.rdb.Subscribe(m.ctx, PubSubChannelGlobal)
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+
+	for {
+		select {
+		case msg := <-ch:
+			var message Message
+			if err := json.Unmarshal([]byte(msg.Payload), &message); err != nil {
+				logger.WithError(err).Error("Failed to unmarshal redis message")
+				continue
+			}
+			// Route the message locally
+			m.handleRemoteMessage(&message)
+		case <-m.ctx.Done():
+			return
+		}
+	}
+}
+
+// handleRemoteMessage attempts to deliver a message received from Redis
+func (m *Manager) handleRemoteMessage(message *Message) {
+	// If it's a direct message, check if user is local
+	if message.To != "" {
+		m.mu.RLock()
+		client, exists := m.clients[message.To]
+		m.mu.RUnlock()
+
+		if exists {
+			select {
+			case client.Send <- message:
+			default:
+				logger.WithField("to", message.To).Warn("Local client buffer full for remote message")
+			}
+		}
+	}
+	// Group logic is handled by the instance that originated the broadcast
+	// because getting group members on every instance is expensive.
+	// Alternative: The originator sends individual messages to users via Redis.
+}
+
 func (m *Manager) RegisterClient(client *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Close existing connection if user is already connected
 	if existingClient, exists := m.clients[client.Username]; exists {
-		logger.WithFields(map[string]interface{}{
-			"username": client.Username,
-			"old_id":   existingClient.ID,
-			"new_id":   client.ID,
-		}).Info("Replacing existing WebSocket connection")
-
 		existingClient.Close()
 	}
 
 	m.clients[client.Username] = client
 
+	// Optional: Subscribe to user-specific Redis channel for highly scalable architecture
+	// For now, Global Broadcast + Local Check is sufficient for <10k users
+
 	logger.WithFields(map[string]interface{}{
 		"username":      client.Username,
-		"client_id":     client.ID,
 		"total_clients": len(m.clients),
-	}).Info("WebSocket client Registered")
+	}).Info("Client Registered")
 }
 
-// unRegisterClient removes a client
 func (m *Manager) unRegisterClient(client *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if existingClient, exists := m.clients[client.Username]; exists {
-		// Only remove if it's the same client instance
 		if existingClient.ID == client.ID {
 			delete(m.clients, client.Username)
 			close(client.Send)
-
-			logger.WithFields(map[string]interface{}{
-				"username":      client.Username,
-				"client_id":     client.ID,
-				"total_clients": len(m.clients),
-			}).Info("WebSocket client unRegistered")
 		}
 	}
 }
 
 // broadcastMessage sends a message to specific recipients
 func (m *Manager) broadcastMessage(message *Message) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	// Send to specific user
+	// 1. Handle Direct Messages
 	if message.To != "" {
-		if client, exists := m.clients[message.To]; exists {
-			select {
-			case client.Send <- message:
-				logger.WithFields(map[string]interface{}{
-					"type": message.Type,
-					"from": message.From,
-					"to":   message.To,
-				}).Debug("Message sent to recipient")
-			default:
-				logger.WithFields(map[string]interface{}{
-					"to": message.To,
-				}).Warn("Client send buffer full, dropping message")
-			}
-		}
+		m.sendDirectMessage(message)
+		return
 	}
 
-	// Broadcast to group
+	// 2. Handle Group Messages
 	if message.GroupID != "" {
-		var allowedMembers map[string]bool
+		m.sendGroupMessage(message)
+	}
+}
 
-		if m.groupService != nil {
-			// We use a background context here as this is an async broadcast
-			// Use the sender as the context user for the check, or verify via service
-			members, err := m.groupService.GetGroupMembers(context.Background(), message.GroupID, message.From)
-			if err == nil {
-				allowedMembers = make(map[string]bool)
-				for _, mem := range members {
-					allowedMembers[mem.Username] = true
-				}
-			} else {
-				logger.WithError(err).Warn("Failed to fetch group members for broadcast filtering")
-			}
+func (m *Manager) sendDirectMessage(message *Message) {
+	m.mu.RLock()
+	client, isLocal := m.clients[message.To]
+	m.mu.RUnlock()
+
+	if isLocal {
+		select {
+		case client.Send <- message:
+		default:
+			logger.WithField("to", message.To).Warn("Client buffer full")
+		}
+	} else {
+		// [FIX] Publish to Redis if not local
+		m.publishToRedis(message)
+	}
+}
+
+// [FIX] Optimized Group Broadcast (O(M) instead of O(N))
+func (m *Manager) sendGroupMessage(message *Message) {
+	if m.groupService == nil {
+		return
+	}
+
+	// Fetch members only once
+	members, err := m.groupService.GetGroupMembers(context.Background(), message.GroupID, message.From)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to fetch group members")
+		return
+	}
+
+	// Iterate over MEMBERS, not CLIENTS
+	for _, member := range members {
+		if member.Username == message.From {
+			continue
 		}
 
-		// Get all group members and send to each
-		for username, client := range m.clients {
-			// [FIX] Skip if filtering is enabled and user is not a member
-			if allowedMembers != nil && !allowedMembers[username] {
-				continue
-			}
+		m.mu.RLock()
+		client, isLocal := m.clients[member.Username]
+		m.mu.RUnlock()
 
-			if username != message.From { // Don't send back to sender
-				select {
-				case client.Send <- message:
-				default:
-					logger.WithField("username", username).Warn("Client buffer full")
-				}
+		if isLocal {
+			select {
+			case client.Send <- message:
+			default:
+				// drop
 			}
+		} else {
+			// If not local, we need to send it to them via Redis.
+			// Optimization: To prevent flooding Redis with N messages for N group members,
+			// sophisticated systems use "Fan-out on Read" or "Group Channels".
+			// For simplicity and correctness here: Send direct message via Redis.
+			msgCopy := *message
+			msgCopy.To = member.Username
+			m.publishToRedis(&msgCopy)
 		}
 	}
 }
 
-// SendToUser sends a message to a specific user
+func (m *Manager) publishToRedis(message *Message) {
+	payload, _ := json.Marshal(message)
+	m.rdb.Publish(m.ctx, PubSubChannelGlobal, payload)
+}
+
 func (m *Manager) SendToUser(username string, message *Message) error {
 	m.mu.RLock()
 	client, exists := m.clients[username]
 	m.mu.RUnlock()
 
-	if !exists {
-		logger.WithField("username", username).Error("Client not connected")
-		return nil
+	if exists {
+		select {
+		case client.Send <- message:
+			return nil
+		default:
+			return apperrors.New(apperrors.ErrCodeInternal, "Buffer full", 500)
+		}
 	}
 
-	select {
-	case client.Send <- message:
-		return nil
-	default:
-		logger.WithField("username", username).Error("Client send buffer full")
-		return apperrors.New(apperrors.ErrCodeInternal, "Client send buffer full", 500)
-	}
+	// User not local, try Redis
+	message.To = username
+	m.publishToRedis(message)
+	return nil
 }
 
 // BroadcastToGroup sends a message to all group members
@@ -267,8 +322,9 @@ func (m *Manager) sendPingToAll() {
 	}
 }
 
-// IsUserOnline checks if a user is connected
 func (m *Manager) IsUserOnline(username string) bool {
+	// Note: This only checks LOCAL online status.
+	// For distributed checking, you'd need to query Redis keys (e.g., SET "users:online" "username")
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	_, exists := m.clients[username]
@@ -368,7 +424,7 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case message, ok := <-c.Send:
-			// [FIX] Safety check before setting deadline
+			// Safety check before setting deadline
 			if c.Conn == nil {
 				return
 			}

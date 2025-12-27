@@ -726,7 +726,7 @@ func setupTestApp(t *testing.T) (*TestApp, func()) {
 	sessionMgr := sessions.NewSessionManager(rdb)
 	friendSvc := friends.NewFriendService(qdb)
 	groupSvc := groups.NewGroupService(qdb)
-	wsManager := _websocket.NewManager(ctx)
+	wsManager := _websocket.NewManager(ctx, rdb)
 	callSvc := calls.NewCallService(ctx, rdb)
 
 	srv, err := server.NewServer(cfg, qdb, rdb, chatSvc, sessionMgr, friendSvc, groupSvc, wsManager, callSvc)
