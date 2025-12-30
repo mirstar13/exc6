@@ -8,7 +8,7 @@ docker-up:
 	@cd docker && docker-compose up -d --remove-orphans
 
 docker-down:
-	@cd docker && docker-compose down -d --remove-orphans
+	@cd docker && docker-compose down --remove-orphans
 
 goose-up:
 	@cd sql/schema && \
