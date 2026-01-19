@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"exc6/apperrors"
 	"exc6/db"
@@ -124,6 +125,17 @@ func (cs *ChatService) SendMessage(ctx context.Context, from, to, content string
 		ToID:      to,
 		Content:   content,
 		Timestamp: time.Now().Unix(),
+	}
+
+	// 0. Persist to PostgreSQL (Primary Source of Truth)
+	if err := cs.persistMessageToDB(ctx, msg); err != nil {
+		logger.WithFields(map[string]any{
+			"from":  from,
+			"to":    to,
+			"error": err.Error(),
+		}).Error("Failed to persist message to database")
+		// We continue - system is designed for high availability,
+		// but this is a critical failure for persistence.
 	}
 
 	// 1. Cache message in Redis with circuit breaker
@@ -425,30 +437,65 @@ func (cs *ChatService) flushBatch(batch []*ChatMessage) {
 	}).Debug("Batch processed")
 }
 
-// GetHistory with circuit breaker
+// GetHistory with circuit breaker and DB fallback
 func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*ChatMessage, error) {
 	conversationKey := cs.GetConversationKey(user1, user2)
 
+	// Try Redis first
 	result, err := breaker.ExecuteCtx(ctx, cs.cbRedis, func() (any, error) {
 		return cs.rdb.ZRange(ctx, conversationKey, 0, -1).Result()
 	})
 
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"conversation_key": conversationKey,
-			"error":            err.Error(),
-		}).Error("Circuit breaker: Failed to get history")
-		return []*ChatMessage{}, nil // Return empty on failure
+	var messages []*ChatMessage
+
+	if err == nil {
+		results := result.([]string)
+		for _, res := range results {
+			var msg ChatMessage
+			if err := json.Unmarshal([]byte(res), &msg); err != nil {
+				continue
+			}
+			messages = append(messages, &msg)
+		}
 	}
 
-	results := result.([]string)
-	messages := make([]*ChatMessage, 0, len(results))
-	for _, res := range results {
-		var msg ChatMessage
-		if err := json.Unmarshal([]byte(res), &msg); err != nil {
-			continue
+	// If Redis returned nothing or failed, try DB
+	if len(messages) == 0 {
+		logger.WithFields(map[string]interface{}{
+			"user1": user1,
+			"user2": user2,
+		}).Info("Cache empty/miss, fetching history from DB")
+
+		dbMessages, err := cs.qdb.GetMessagesBetweenUsers(ctx, db.GetMessagesBetweenUsersParams{
+			Username:   user1,
+			Username_2: user2,
+			Limit:      100,
+			Offset:     0,
+		})
+
+		if err == nil {
+			// Convert DB models to ChatMessage struct
+			// Note: DB returns newest first, we need to reverse for chat window (oldest first)
+			for i := len(dbMessages) - 1; i >= 0; i-- {
+				dbMsg := dbMessages[i]
+				msg := &ChatMessage{
+					MessageID: dbMsg.MessageID,
+					FromID:    dbMsg.FromUsername,
+					ToID:      dbMsg.ToUsername,
+					Content:   dbMsg.Content,
+					Timestamp: dbMsg.CreatedAt.Unix(),
+				}
+				messages = append(messages, msg)
+
+				// Optional: Populate cache (async)
+				go func(m *ChatMessage) {
+					// Use background context to not cancel on HTTP timeout
+					cs.cacheMessage(context.Background(), m)
+				}(msg)
+			}
+		} else {
+			logger.WithError(err).Error("Failed to fetch messages from DB")
 		}
-		messages = append(messages, &msg)
 	}
 
 	return messages, nil
@@ -589,6 +636,32 @@ func (cs *ChatService) GetContacts(currentUsername string) ([]string, error) {
 	}
 
 	return contacts, nil
+}
+
+func (cs *ChatService) persistMessageToDB(ctx context.Context, msg *ChatMessage) error {
+	fromUser, err := cs.qdb.GetUserByUsername(ctx, msg.FromID)
+	if err != nil {
+		return fmt.Errorf("failed to get sender: %w", err)
+	}
+
+	var toUserID uuid.NullUUID
+	if msg.ToID != "" {
+		toUser, err := cs.qdb.GetUserByUsername(ctx, msg.ToID)
+		if err != nil {
+			return fmt.Errorf("failed to get recipient: %w", err)
+		}
+		toUserID = uuid.NullUUID{UUID: toUser.ID, Valid: true}
+	}
+
+	_, err = cs.qdb.CreateMessage(ctx, db.CreateMessageParams{
+		MessageID:  msg.MessageID,
+		FromUserID: fromUser.ID,
+		ToUserID:   toUserID,
+		Content:    msg.Content,
+		IsGroup:    sql.NullBool{Bool: false, Valid: true}, // Basic 1:1 for now
+	})
+
+	return err
 }
 
 // Metrics helpers

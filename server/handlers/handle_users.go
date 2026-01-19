@@ -9,6 +9,7 @@ import (
 	"exc6/services/sessions"
 	"exc6/utils"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -146,13 +147,14 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		}
 
 		// Set secure cookie
+		isSecure := os.Getenv("APP_ENV") != "development"
 		ctx.Cookie(&fiber.Cookie{
 			Name:     "session_id",
 			Value:    sessionID,
 			Expires:  time.Now().Add(24 * time.Hour),
 			HTTPOnly: true,
 			SameSite: "Lax",
-			Secure:   false,
+			Secure:   isSecure,
 			Path:     "/",
 		})
 

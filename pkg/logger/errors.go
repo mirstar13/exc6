@@ -7,7 +7,7 @@ import (
 // LogAppError logs an AppError with all its rich context
 func LogAppError(err error, level Level) {
 	if appErr, ok := err.(*apperrors.AppError); ok {
-		WithFields(appErr.LogFields()).log(level, appErr.Message)
+		WithFields(appErr.LogFields()).log(level, "%s", appErr.Message)
 	} else {
 		WithError(err).log(level, "Unstructured error occurred")
 	}
@@ -20,7 +20,7 @@ func LogAppErrorWithContext(err error, level Level, additionalContext map[string
 		for k, v := range additionalContext {
 			fields["extra_"+k] = v
 		}
-		WithFields(fields).log(level, appErr.Message)
+		WithFields(fields).log(level, "%s", appErr.Message)
 	} else {
 		fields := map[string]interface{}{"error": err}
 		for k, v := range additionalContext {

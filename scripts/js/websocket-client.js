@@ -675,7 +675,7 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
                         <span class="absolute top-0 right-0 w-6 h-6 bg-green-500 border-4 border-[#1e1e1e] rounded-full"></span>
                     </div>
 
-                    <h3 id="caller-name" class="text-3xl font-bold text-white mb-1 tracking-tight">${caller}</h3>
+                    <h3 id="caller-name" class="text-3xl font-bold text-white mb-1 tracking-tight"></h3>
                     <p class="text-blue-200/70 text-sm font-medium uppercase tracking-widest mb-10">Incoming Call...</p>
                     
                     <div class="flex gap-6 justify-center items-center">
@@ -701,6 +701,7 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
+        modal.querySelector('#caller-name').textContent = caller;
         return modal;
     }
 
@@ -728,7 +729,7 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
                         </svg>
                     </div>
-                    <h3 id="callee-name" class="text-2xl font-bold text-white mb-2">${callee}</h3>
+                    <h3 id="callee-name" class="text-2xl font-bold text-white mb-2"></h3>
                     <div class="flex items-center justify-center gap-2 mb-10">
                         <span class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span>
                         <span class="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-100"></span>
@@ -745,6 +746,7 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
+        modal.querySelector('#callee-name').textContent = callee;
         return modal;
     }
 
@@ -780,13 +782,13 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
                     <div class="mb-6 relative inline-block">
                         <div class="w-24 h-24 rounded-full bg-gradient-to-br from-gray-800 to-gray-700 p-1">
                             <div class="w-full h-full rounded-full bg-gray-800 flex items-center justify-center overflow-hidden">
-                                <span class="text-3xl font-bold text-gray-500">${this.currentCallPeer ? this.currentCallPeer.charAt(0).toUpperCase() : '?'}</span>
+                                <span class="text-3xl font-bold text-gray-500" id="peer-initial"></span>
                             </div>
                         </div>
                         <span class="absolute bottom-1 right-1 w-5 h-5 bg-green-500 border-4 border-gray-800 rounded-full"></span>
                     </div>
 
-                    <h3 class="text-2xl font-bold text-white mb-1">${this.currentCallPeer}</h3>
+                    <h3 class="text-2xl font-bold text-white mb-1" id="peer-name"></h3>
                     <div class="flex items-center justify-center gap-2 mb-8 opacity-60">
                         <span class="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
                         <p id="call-timer" class="text-sm font-mono tracking-wider">00:00</p>
@@ -809,6 +811,8 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             </div>
             <audio id="remote-audio" autoplay></audio>
         `;
+        modal.querySelector('#peer-initial').textContent = this.currentCallPeer ? this.currentCallPeer.charAt(0).toUpperCase() : '?';
+        modal.querySelector('#peer-name').textContent = this.currentCallPeer;
         return modal;
     }
 

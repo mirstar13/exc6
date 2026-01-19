@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"exc6/apperrors"
 	"exc6/pkg/logger"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -49,10 +50,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		path := c.Path()
-		if path == "/login" || path == "/register" || path == "/login-form" || path == "/register-form" {
-			return c.Next()
-		}
-
 		sessionID := c.Cookies("session_id")
 		if sessionID == "" {
 			// No session yet - skip CSRF check
@@ -129,12 +126,13 @@ func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (str
 		return "", err
 	}
 
+	isSecure := os.Getenv("APP_ENV") != "development"
 	c.Cookie(&fiber.Cookie{
 		Name:     "csrf_token",
 		Value:    token,
 		Expires:  time.Now().Add(expiration),
 		HTTPOnly: false,
-		Secure:   false,
+		Secure:   isSecure,
 		SameSite: "Strict",
 		Path:     "/",
 	})
