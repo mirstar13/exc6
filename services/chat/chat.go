@@ -501,6 +501,40 @@ func (cs *ChatService) GetHistory(ctx context.Context, user1, user2 string) ([]*
 	return messages, nil
 }
 
+func (cs *ChatService) GetHistoryBefore(ctx context.Context, user1, user2 string, beforeTimestamp int64) ([]*ChatMessage, error) {
+	// For pagination, we skip Redis and go straight to DB because Redis only holds recent messages
+
+	// Convert timestamp to time.Time
+	beforeTime := time.Unix(beforeTimestamp, 0)
+
+	dbMessages, err := cs.qdb.GetMessagesBetweenUsersPaginated(ctx, db.GetMessagesBetweenUsersPaginatedParams{
+		Username:   user1,
+		Username_2: user2,
+		CreatedAt:  beforeTime,
+		Limit:      50,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch paginated history: %w", err)
+	}
+
+	var messages []*ChatMessage
+	// Reverse order for chat window (oldest first)
+	for i := len(dbMessages) - 1; i >= 0; i-- {
+		dbMsg := dbMessages[i]
+		msg := &ChatMessage{
+			MessageID: dbMsg.MessageID,
+			FromID:    dbMsg.FromUsername,
+			ToID:      dbMsg.ToUsername,
+			Content:   dbMsg.Content,
+			Timestamp: dbMsg.CreatedAt.Unix(),
+		}
+		messages = append(messages, msg)
+	}
+
+	return messages, nil
+}
+
 // GetUnreadMessages with circuit breaker
 func (cs *ChatService) GetUnreadMessages(ctx context.Context, username string) (map[string]int, error) {
 	key := fmt.Sprintf("chat:unread:%s", username)
@@ -645,20 +679,42 @@ func (cs *ChatService) persistMessageToDB(ctx context.Context, msg *ChatMessage)
 	}
 
 	var toUserID uuid.NullUUID
-	if msg.ToID != "" {
-		toUser, err := cs.qdb.GetUserByUsername(ctx, msg.ToID)
-		if err != nil {
-			return fmt.Errorf("failed to get recipient: %w", err)
+	var groupID uuid.NullUUID
+	isGroup := sql.NullBool{Bool: msg.IsGroup, Valid: true}
+
+	if msg.IsGroup {
+		// Group Chat
+		if msg.GroupID == "" {
+			return fmt.Errorf("group id missing for group message")
 		}
-		toUserID = uuid.NullUUID{UUID: toUser.ID, Valid: true}
+
+		// Assuming msg.GroupID is the group's UUID string (not name)
+		// If it's the name, we'd need to fetch by name.
+		// Checking codebase usage: ChatMessage structure suggests ID.
+		gUUID, err := uuid.Parse(msg.GroupID)
+		if err != nil {
+			return fmt.Errorf("invalid group id: %w", err)
+		}
+		groupID = uuid.NullUUID{UUID: gUUID, Valid: true}
+
+	} else {
+		// 1:1 Chat
+		if msg.ToID != "" {
+			toUser, err := cs.qdb.GetUserByUsername(ctx, msg.ToID)
+			if err != nil {
+				return fmt.Errorf("failed to get recipient: %w", err)
+			}
+			toUserID = uuid.NullUUID{UUID: toUser.ID, Valid: true}
+		}
 	}
 
 	_, err = cs.qdb.CreateMessage(ctx, db.CreateMessageParams{
 		MessageID:  msg.MessageID,
 		FromUserID: fromUser.ID,
 		ToUserID:   toUserID,
+		GroupID:    groupID,
 		Content:    msg.Content,
-		IsGroup:    sql.NullBool{Bool: false, Valid: true}, // Basic 1:1 for now
+		IsGroup:    isGroup,
 	})
 
 	return err

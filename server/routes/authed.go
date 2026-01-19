@@ -136,6 +136,7 @@ func (ar *AuthRoutes) registerWebSocketRoutes(router fiber.Router) {
 // registerChatRoutes sets up chat-related endpoints
 func (ar *AuthRoutes) registerChatRoutes(router fiber.Router) {
 	router.Get("/chat/:contact", handlers.HandleLoadChatWindow(ar.csrv, ar.db))
+	router.Get("/chat/:contact/history", handlers.HandleLoadMoreMessages(ar.csrv))
 	router.Post("/chat/:contact", handlers.HandleSendMessage(ar.csrv))
 }
 

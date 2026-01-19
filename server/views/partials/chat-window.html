@@ -30,16 +30,20 @@
         </div>
     </header>
 
-    <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
+    <div id="scroll-wrapper" class="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar" onscroll="checkScroll(this)">
         <div class="flex flex-col justify-end min-h-full">
-            <div class="text-center mb-4 shrink-0">
+            <div id="load-more-trigger" class="text-center py-2 hidden">
+                <div class="inline-block w-4 h-4 border-2 border-signal-blue border-t-transparent rounded-full animate-spin"></div>
+            </div>
+
+            <div class="text-center mb-4 shrink-0" id="date-separator">
                 <span class="text-xs text-signal-text-sub bg-signal-surface/50 px-3 py-1 rounded-full border border-white/5">Today</span>
             </div>
             
             <div id="message-list" class="flex flex-col gap-1">
                 {{$me := .Me}}
                 {{range .Messages}}
-                    <div class="message-bubble flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}} opacity-0 translate-y-2" data-message-id="{{.MessageID}}">
+                    <div class="message-bubble flex w-full mb-1 group {{if eq .FromID $me}}justify-end{{else}}justify-start{{end}} opacity-0 translate-y-2" data-message-id="{{.MessageID}}" data-timestamp="{{.Timestamp}}">
                         <div class="max-w-[85%] md:max-w-[60%] lg:max-w-[500px] px-4 py-2 text-[15px] leading-relaxed shadow-sm relative {{if eq .FromID $me}}bg-signal-blue text-white rounded-2xl rounded-tr-sm{{else}}bg-signal-bubble text-signal-text-main rounded-2xl rounded-tl-sm{{end}}" style="word-break: break-word; overflow-wrap: break-word;">
                             {{.Content}}
                             <div class="text-[10px] opacity-60 text-right mt-1 select-none {{if eq .FromID $me}}text-blue-100{{else}}text-signal-text-sub{{end}}">
@@ -116,6 +120,55 @@
 
             let wsClient = null;
             let voiceCall = null;
+            let isLoadingMore = false;
+            let hasMoreMessages = true;
+
+            // Scroll Handler
+            window.checkScroll = function(element) {
+                if (element.scrollTop === 0 && !isLoadingMore && hasMoreMessages) {
+                    loadMoreMessages(element);
+                }
+            };
+
+            function loadMoreMessages(container) {
+                const firstMessage = messageList.firstElementChild;
+                if (!firstMessage) return;
+
+                const oldestTimestamp = firstMessage.dataset.timestamp;
+                if (!oldestTimestamp || oldestTimestamp == "0") return;
+
+                isLoadingMore = true;
+                const loader = document.getElementById('load-more-trigger');
+                loader.classList.remove('hidden');
+
+                // Capture current scroll height before appending
+                const previousScrollHeight = container.scrollHeight;
+
+                fetch(`/chat/${contactName}/history?before=${oldestTimestamp}`)
+                    .then(response => {
+                        if (response.status === 204) {
+                            hasMoreMessages = false;
+                            loader.remove(); // No more messages
+                            return null;
+                        }
+                        return response.text();
+                    })
+                    .then(html => {
+                        if (html) {
+                            // Insert new messages at the TOP
+                            messageList.insertAdjacentHTML('afterbegin', html);
+
+                            // Restore scroll position
+                            const newScrollHeight = container.scrollHeight;
+                            container.scrollTop = newScrollHeight - previousScrollHeight;
+                        }
+                    })
+                    .catch(err => console.error('Failed to load history:', err))
+                    .finally(() => {
+                        isLoadingMore = false;
+                        if(loader) loader.classList.add('hidden');
+                    });
+            }
             
             // Initialize WebSocket
             function initWebSocket() {

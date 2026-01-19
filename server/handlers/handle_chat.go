@@ -114,3 +114,33 @@ func HandleSendMessage(cs *chat.ChatService) fiber.Handler {
 		return c.SendStatus(fiber.StatusOK)
 	}
 }
+
+func HandleLoadMoreMessages(cs *chat.ChatService) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		currentUser := c.Locals("username").(string)
+		targetUser := c.Params("contact")
+		beforeTimestamp := c.QueryInt("before", 0)
+
+		if targetUser == "" || beforeTimestamp == 0 {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		messages, err := cs.GetHistoryBefore(ctx, currentUser, targetUser, int64(beforeTimestamp))
+		if err != nil {
+			logger.WithError(err).Error("Failed to load more messages")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if len(messages) == 0 {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+
+		return c.Render("partials/chat-messages-only", fiber.Map{
+			"Me":       currentUser,
+			"Messages": messages,
+		})
+	}
+}
