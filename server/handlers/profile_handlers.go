@@ -4,6 +4,7 @@ import (
 	"context"
 	"exc6/db"
 	"exc6/services/sessions"
+	"exc6/utils"
 	"os"
 	"time"
 
@@ -85,6 +86,9 @@ func HandleUserProfileUpdate(qdb *db.Queries, smngr *sessions.SessionManager) fi
 
 		// Handle username update
 		if newUsername != "" && newUsername != oldUsername {
+			if err := utils.ValidateUsername(newUsername); err != nil {
+				return renderProfileEditError(ctx, &user, err.Message)
+			}
 			user.Username = newUsername
 		}
 
