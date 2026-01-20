@@ -18,13 +18,13 @@
         </div>
         
         <div class="flex gap-4 text-signal-text-sub shrink-0">
-            <button onclick="startCall()" title="Voice Call" class="hover:text-signal-blue transition-colors">
+            <button onclick="startCall()" title="Voice Call" aria-label="Start voice call" class="hover:text-signal-blue transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
             </button>
-            <button class="hover:text-signal-text-main transition-colors">
+            <button aria-label="Search messages" class="hover:text-signal-text-main transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </button>
-            <button class="hover:text-signal-text-main transition-colors">
+            <button aria-label="More options" class="hover:text-signal-text-main transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
             </button>
         </div>
@@ -58,16 +58,16 @@
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             {{end}}
 
-            <button type="button" class="p-3 text-signal-text-sub hover:text-signal-text-main transition-colors rounded-full hover:bg-signal-surface mb-0.5 shrink-0">
+            <button type="button" aria-label="Add attachment" class="p-3 text-signal-text-sub hover:text-signal-text-main transition-colors rounded-full hover:bg-signal-surface mb-0.5 shrink-0">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
 
             <div class="flex-1 bg-signal-surface rounded-[24px] flex items-center px-4 py-2 border border-transparent focus-within:border-signal-text-sub/30 transition-all min-w-0">
-                <input id="chat-input" type="text" name="content" placeholder="Message" required autocomplete="off" 
+                <input id="chat-input" type="text" name="content" placeholder="Message" aria-label="Type a message" required autocomplete="off"
                        class="w-full bg-transparent text-signal-text-main placeholder-signal-text-sub/70 focus:outline-none py-1.5">
             </div>
             
-            <button type="submit" class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 mb-0.5 group shrink-0">
+            <button type="submit" aria-label="Send message" class="p-3 bg-signal-blue hover:bg-signal-bluehover text-white rounded-full transition-all shadow-lg hover:shadow-blue-900/30 mb-0.5 group shrink-0">
                 <svg class="w-5 h-5 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
             </button>
         </form>
