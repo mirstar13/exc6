@@ -7,6 +7,7 @@ import (
 	"exc6/db"
 	"exc6/pkg/breaker"
 	"exc6/pkg/logger"
+	"exc6/utils"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,12 +59,10 @@ type MemberInfo struct {
 // CreateGroup creates a new group with circuit breaker
 func (gs *GroupService) CreateGroup(ctx context.Context, creatorUsername, name, description, icon string) (*GroupInfo, error) {
 	// Validate group name
-	if name == "" || len(name) < 3 {
-		return nil, apperrors.NewValidationError("Group name must be at least 3 characters").
+	if err := utils.ValidateGroupName(name); err != nil {
+		return nil, err.
 			WithOperation("group_creation").
 			WithDetails("provided_name", name).
-			WithDetails("min_length", 3).
-			WithDetails("actual_length", len(name)).
 			WithContext("creator", creatorUsername)
 	}
 

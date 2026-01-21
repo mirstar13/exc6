@@ -55,3 +55,53 @@ func TestValidateUsername(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateGroupName(t *testing.T) {
+	tests := []struct {
+		name      string
+		groupName string
+		wantErr   bool
+	}{
+		{
+			name:      "Valid group name",
+			groupName: "Valid Group Name 123",
+			wantErr:   false,
+		},
+		{
+			name:      "Too short",
+			groupName: "ab",
+			wantErr:   true,
+		},
+		{
+			name:      "Too long",
+			groupName: "this group name is definitely way too long to be valid in our system because it exceeds fifty characters limit",
+			wantErr:   true,
+		},
+		{
+			name:      "Invalid characters",
+			groupName: "Group <script>",
+			wantErr:   true,
+		},
+		{
+			name:      "Special characters",
+			groupName: "Group @ Name",
+			wantErr:   true,
+		},
+		{
+			name:      "Hyphens and Underscores",
+			groupName: "Group-Name_1",
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGroupName(tt.groupName)
+			if tt.wantErr {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
