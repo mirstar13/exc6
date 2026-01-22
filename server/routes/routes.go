@@ -20,7 +20,7 @@ func RegisterRoutes(app *fiber.App, db *db.Queries, csrv *chat.ChatService, fsrv
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	// Initialize route handlers
-	publicRoutes := NewPublicRoutes(db, smngr)
+	publicRoutes := NewPublicRoutes(db, smngr, rdb)
 	apiRoutes := NewAPIRoutes()
 	authRoutes := NewAuthRoutes(db, csrv, fsrv, gsrv, smngr, &websocketManager, callssrv, rdb)
 
