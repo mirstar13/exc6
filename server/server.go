@@ -6,6 +6,8 @@ import (
 	"exc6/config"
 	"exc6/db"
 	"exc6/pkg/logger"
+	"exc6/server/handlers"
+	"exc6/server/middleware/csrf"
 	"exc6/server/middleware/limiter"
 	"exc6/server/middleware/security"
 	"exc6/server/routes"
@@ -148,6 +150,33 @@ func NewServer(cfg *config.Config, db *db.Queries, rdb *redis.Client, csrv *chat
 		},
 		LimitReachedHandler: func(c *fiber.Ctx) error {
 			return apperrors.NewRateLimitError()
+		},
+	}))
+
+	// Global CSRF Protection
+	csrfStorage := csrf.NewRedisStorage(rdb, 1*time.Hour)
+
+	// Inject CSRF token into all responses (for forms/HTMX)
+	app.Use(handlers.InjectCSRFToken(csrfStorage, 1*time.Hour))
+
+	// Validate CSRF token on all state-changing requests
+	app.Use(csrf.New(csrf.Config{
+		Storage:    csrfStorage,
+		KeyLookup:  "header:X-CSRF-Token",
+		CookieName: "csrf_token",
+		Expiration: 1 * time.Hour,
+		Next: func(c *fiber.Ctx) bool {
+			// Skip CSRF for safe methods
+			method := c.Method()
+			if method == "GET" || method == "HEAD" || method == "OPTIONS" || method == "TRACE" || method == "CONNECT" {
+				return true
+			}
+			// Skip for metrics
+			if c.Path() == "/metrics" {
+				return true
+			}
+			// Do NOT skip /login or /register (POST)
+			return false
 		},
 	}))
 

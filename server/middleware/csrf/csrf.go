@@ -9,7 +9,16 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
+
+// GetTokenKey retrieves the key used for CSRF storage (session_id or csrf_client_id)
+func GetTokenKey(c *fiber.Ctx) string {
+	if sess := c.Cookies("session_id"); sess != "" {
+		return sess
+	}
+	return c.Cookies("csrf_client_id")
+}
 
 // New creates a new CSRF middleware
 func New(config ...Config) fiber.Handler {
@@ -50,19 +59,28 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		path := c.Path()
-		sessionID := c.Cookies("session_id")
-		if sessionID == "" {
-			// No session yet - skip CSRF check
-			return c.Next()
+		key := GetTokenKey(c)
+
+		if key == "" {
+			logger.WithFields(map[string]interface{}{
+				"method": method,
+				"path":   path,
+			}).Warn("CSRF Validation: No session or client ID found")
+
+			return cfg.ErrorHandler(c, apperrors.New(
+				apperrors.ErrCodeValidationFailed,
+				"CSRF validation failed: missing identity",
+				fiber.StatusForbidden,
+			))
 		}
 
 		token := extractor(c)
 
 		if token == "" {
 			logger.WithFields(map[string]interface{}{
-				"method":     method,
-				"path":       path,
-				"session_id": sessionID,
+				"method": method,
+				"path":   path,
+				"key":    key,
 			}).Warn("CSRF Validation: Token missing from request")
 
 			return cfg.ErrorHandler(c, apperrors.New(
@@ -73,11 +91,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Validate token
-		storedToken, err := cfg.Storage.Get(sessionID)
+		storedToken, err := cfg.Storage.Get(key)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
-				"session_id": sessionID,
-				"error":      err,
+				"key":   key,
+				"error": err,
 			}).Error("CSRF Validation: Failed to retrieve stored token")
 
 			return cfg.ErrorHandler(c, err)
@@ -85,7 +103,7 @@ func New(config ...Config) fiber.Handler {
 
 		if token != storedToken {
 			logger.WithFields(map[string]interface{}{
-				"session_id": sessionID,
+				"key": key,
 			}).Warn("CSRF Validation: Token mismatch")
 
 			return cfg.ErrorHandler(c, apperrors.New(
@@ -101,32 +119,40 @@ func New(config ...Config) fiber.Handler {
 }
 
 // GenerateToken creates a new CSRF token for a session
-func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (string, error) {
-	sessionID := c.Cookies("session_id")
-	if sessionID == "" {
-		return "", apperrors.New(
-			apperrors.ErrCodeUnauthorized,
-			"No session found",
-			fiber.StatusUnauthorized,
-		)
+// Returns token, key, and error
+func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (string, string, error) {
+	key := GetTokenKey(c)
+	isSecure := os.Getenv("APP_ENV") != "development"
+
+	if key == "" {
+		// Generate new client ID if no session or client ID exists
+		key = uuid.NewString()
+		c.Cookie(&fiber.Cookie{
+			Name:     "csrf_client_id",
+			Value:    key,
+			Expires:  time.Now().Add(expiration),
+			HTTPOnly: true,
+			Secure:   isSecure,
+			SameSite: "Lax",
+			Path:     "/",
+		})
 	}
 
 	token, err := generateRandomToken(32)
 	if err != nil {
 		logger.WithError(err).Error("CSRF: Failed to generate random token")
-		return "", err
+		return "", "", err
 	}
 
-	// Store token associated with session
-	if err := storage.Set(sessionID, token, expiration); err != nil {
+	// Store token associated with key
+	if err := storage.Set(key, token, expiration); err != nil {
 		logger.WithFields(map[string]interface{}{
-			"session_id": sessionID,
-			"error":      err,
+			"key":   key,
+			"error": err,
 		}).Error("CSRF: Failed to store token")
-		return "", err
+		return "", "", err
 	}
 
-	isSecure := os.Getenv("APP_ENV") != "development"
 	c.Cookie(&fiber.Cookie{
 		Name:     "csrf_token",
 		Value:    token,
@@ -137,7 +163,7 @@ func GenerateToken(c *fiber.Ctx, storage Storage, expiration time.Duration) (str
 		Path:     "/",
 	})
 
-	return token, nil
+	return token, key, nil
 }
 
 func createExtractor(lookup string) func(*fiber.Ctx) string {
