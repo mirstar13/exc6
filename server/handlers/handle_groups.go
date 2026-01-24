@@ -8,6 +8,7 @@ import (
 	"exc6/server/websocket"
 	"exc6/services/chat"
 	"exc6/services/groups"
+	"html"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -292,7 +293,7 @@ func HandleCreateGroupFromDashboard(gsrv *groups.GroupService) fiber.Handler {
 		return c.SendString(`
 			<div class="bg-green-500/10 border border-green-500/30 text-green-400 p-4 rounded-xl text-center">
 				<p class="font-semibold mb-2">Group Created!</p>
-				<p class="text-sm">` + group.Name + ` has been created successfully.</p>
+				<p class="text-sm">` + html.EscapeString(group.Name) + ` has been created successfully.</p>
 			</div>
 		`)
 	}
