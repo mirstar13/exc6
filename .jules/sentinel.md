@@ -7,3 +7,8 @@
 **Vulnerability:** `HandleCreateGroupFromDashboard` constructed HTML responses using string concatenation (`c.SendString`) with unescaped user input (`group.Name`), leading to Stored XSS.
 **Learning:** Developers might bypass template safety when sending small HTMX snippets via `SendString`.
 **Prevention:** Always use `html.EscapeString` when manually building HTML, or strictly prefer `c.Render` with templates which handle escaping automatically.
+
+## 2025-10-27 - Reflected XSS in Friend Request Handler
+**Vulnerability:** The `HandleSendFriendRequest` function echoed the `targetUsername` parameter directly into the HTML response string without escaping, creating a Reflected XSS vulnerability if a user could exist with malicious characters (or if validation changes).
+**Learning:** Even with input validation on creation, parameters reflected in responses must be escaped at the point of output to ensure defense in depth.
+**Prevention:** Used `html.EscapeString` when constructing the HTML response manually. Also renamed `handle_firends.go` to `handle_friends.go` to fix a typo and clean up the codebase.
