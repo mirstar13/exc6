@@ -84,7 +84,7 @@
         <aside id="sidebar" class="w-[320px] bg-signal-sidebar flex flex-col shrink-0 border-r border-white/5 z-20 relative">
             
             <div class="sidebar-header h-16 px-4 bg-signal-sidebar flex justify-between items-center shrink-0 border-b border-white/5 transition-all">
-                <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile">
+                <a href="/profile" class="group flex items-center gap-3 cursor-pointer" title="Profile" aria-label="View profile">
                     {{if .CustomIcon}}
                         <div class="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/5 group-hover:ring-2 transition-all shrink-0">
                             <img src="{{.CustomIcon}}" alt="{{.Username}}" class="w-full h-full object-cover">
@@ -101,7 +101,8 @@
                     <div class="relative" id="notifications-menu-container">
                         <button onclick="toggleNotifications()" 
                                 class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all relative outline-none" 
-                                title="Notifications">
+                                title="Notifications"
+                                aria-label="View notifications">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                             
                             <span id="notification-badge" 
@@ -129,13 +130,13 @@
                         </div>
                     </div>
 
-                    <a href="/friends" title="Friends" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all group relative">
+                    <a href="/friends" title="Friends" aria-label="View friends" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all group relative">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                     </a>
-                    <button onclick="openGroupModal()" title="Create Group" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all">
+                    <button onclick="openGroupModal()" title="Create Group" aria-label="Create new group" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-signal-blue transition-all">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     </button>
-                    <button hx-post="/logout" title="Sign Out" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-red-400 transition-all">
+                    <button hx-post="/logout" title="Sign Out" aria-label="Sign out" class="w-9 h-9 rounded-full hover:bg-signal-surface flex items-center justify-center text-signal-text-sub hover:text-red-400 transition-all">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </button>
                 </div>
@@ -144,7 +145,7 @@
             <div class="p-3 shrink-0">
                 <div class="search-wrapper bg-signal-surface rounded-lg px-3 py-1.5 flex items-center gap-2 transition-all">
                     <svg class="w-4 h-4 text-signal-text-sub shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                    <input type="text" placeholder="Search" class="search-input bg-transparent border-none outline-none text-sm text-signal-text-main placeholder-signal-text-sub w-full focus:ring-0">
+                    <input type="text" placeholder="Search" aria-label="Search contacts" class="search-input bg-transparent border-none outline-none text-sm text-signal-text-main placeholder-signal-text-sub w-full focus:ring-0">
                 </div>
             </div>
 
@@ -159,7 +160,7 @@
             <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
 
             <div class="p-4 border-t border-white/5 flex justify-end shrink-0">
-                <button onclick="toggleSidebar()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-signal-surface text-signal-text-sub transition-all">
+                <button onclick="toggleSidebar()" aria-label="Toggle sidebar" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-signal-surface text-signal-text-sub transition-all">
                     <svg class="toggle-arrow w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
                 </button>
             </div>
