@@ -5,6 +5,7 @@ import (
 	"exc6/apperrors"
 	"exc6/server/websocket"
 	"exc6/services/friends"
+	"html"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -102,7 +103,7 @@ func HandleSendFriendRequest(fsrv *friends.FriendService, wsManager *websocket.M
 		// Return success message
 		return c.SendString(`
 			<div class="bg-green-500/10 border border-green-500/30 text-green-400 p-3 rounded-xl text-sm animate-fade-in">
-				Friend request sent to ` + targetUsername + `
+				Friend request sent to ` + html.EscapeString(targetUsername) + `
 			</div>
 		`)
 	}
