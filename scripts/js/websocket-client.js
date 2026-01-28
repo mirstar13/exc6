@@ -628,12 +628,22 @@ Please use HTTPS or test with Chrome which allows localhost over HTTP.`;
             type === 'error' ? 'bg-red-900/90 text-red-100' : 'bg-gray-900/90 text-white'
         } backdrop-blur-md min-w-[300px] justify-center`;
         
-        toast.innerHTML = `
-            <div class="flex flex-col items-center text-center">
-                <span class="font-bold text-sm tracking-wide">${title}</span>
-                ${subtitle ? `<span class="text-xs opacity-70 mt-0.5">${subtitle}</span>` : ''}
-            </div>
-        `;
+        const container = document.createElement('div');
+        container.className = 'flex flex-col items-center text-center';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'font-bold text-sm tracking-wide';
+        titleSpan.textContent = title;
+        container.appendChild(titleSpan);
+
+        if (subtitle) {
+            const subtitleSpan = document.createElement('span');
+            subtitleSpan.className = 'text-xs opacity-70 mt-0.5';
+            subtitleSpan.textContent = subtitle;
+            container.appendChild(subtitleSpan);
+        }
+
+        toast.appendChild(container);
 
         document.body.appendChild(toast);
 
