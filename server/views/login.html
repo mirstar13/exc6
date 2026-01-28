@@ -62,8 +62,12 @@
             const input = container.querySelector('input');
             if (!input) return;
 
-            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+            const isPassword = input.getAttribute('type') === 'password';
+            const type = isPassword ? 'text' : 'password';
             input.setAttribute('type', type);
+
+            // Update ARIA label
+            btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
 
             const eyeIcon = btn.querySelector('.eye-icon');
             const eyeOffIcon = btn.querySelector('.eye-off-icon');
