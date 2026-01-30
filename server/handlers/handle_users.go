@@ -17,6 +17,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const dummyHash = "$2a$10$3.9CkLgb/3y8xay50uk2RO0LmHXj4Q7TP45iUaboLlSc3u9j/SrVW"
+
 var defaultIcons = []string{
 	"gradient-blue",
 	"gradient-purple",
@@ -106,6 +108,7 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		if err != nil {
 			if err == sql.ErrNoRows {
 				// User not found
+				bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(password))
 				appErr := apperrors.NewInvalidCredentials()
 				return ctx.Render("partials/login", fiber.Map{
 					"Error":    appErr.Message,
