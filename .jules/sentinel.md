@@ -7,3 +7,8 @@
 **Vulnerability:** `HandleCreateGroupFromDashboard` constructed HTML responses using string concatenation (`c.SendString`) with unescaped user input (`group.Name`), leading to Stored XSS.
 **Learning:** Developers might bypass template safety when sending small HTMX snippets via `SendString`.
 **Prevention:** Always use `html.EscapeString` when manually building HTML, or strictly prefer `c.Render` with templates which handle escaping automatically.
+
+## 2025-10-27 - User Enumeration via Timing Attacks
+**Vulnerability:** Authentication handlers (e.g., `HandleUserLogin`) returned immediately when a user was not found (`sql.ErrNoRows`), but performed an expensive `bcrypt` comparison when a user was found. This timing discrepancy allowed attackers to enumerate valid usernames.
+**Learning:** Security-sensitive operations like login must execute in constant time (or indistinguishable time) regardless of the input's validity.
+**Prevention:** Always perform the expensive operation (hash comparison) even if the user is not found, using a pre-calculated dummy hash to ensure consistent timing.

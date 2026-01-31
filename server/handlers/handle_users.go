@@ -17,6 +17,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var dummyUserHash string
+
+func init() {
+	// Generate a dummy hash for timing attack prevention
+	// Use a fixed salt/cost to match real passwords
+	hash, err := bcrypt.GenerateFromPassword([]byte("dummy_password_for_timing_mitigation"), bcrypt.DefaultCost)
+	if err != nil {
+		// Should only happen if system is severely broken
+		panic(err)
+	}
+	dummyUserHash = string(hash)
+}
+
 var defaultIcons = []string{
 	"gradient-blue",
 	"gradient-purple",
@@ -103,15 +116,14 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		defer cancel()
 
 		user, err := qdb.GetUserByUsername(dbCtx, username)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// User not found
-				appErr := apperrors.NewInvalidCredentials()
-				return ctx.Render("partials/login", fiber.Map{
-					"Error":    appErr.Message,
-					"Username": username,
-				})
-			}
+
+		passwordHash := dummyUserHash
+		userFound := false
+
+		if err == nil {
+			passwordHash = user.PasswordHash
+			userFound = true
+		} else if err != sql.ErrNoRows {
 			// Other DB error
 			logger.WithFields(map[string]any{
 				"username": username,
@@ -121,8 +133,11 @@ func HandleUserLogin(qdb *db.Queries, smngr *sessions.SessionManager) fiber.Hand
 		}
 
 		// Verify password
-		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-			// Invalid password
+		// We always execute this to prevent timing attacks (user enumeration)
+		err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
+
+		if err != nil || !userFound {
+			// Invalid password or user not found
 			appErr := apperrors.NewInvalidCredentials()
 			return ctx.Render("partials/login", fiber.Map{
 				"Error":    appErr.Message,
