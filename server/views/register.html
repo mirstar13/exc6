@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/animejs@3.2.2/lib/anime.min.js"></script>
     <script src="/scripts/js/htmx-csrf.js"></script>
+    <script src="/scripts/js/auth.js"></script>
     
     <script>
         tailwind.config = {
@@ -60,27 +61,6 @@
             });
         });
 
-        window.togglePassword = function(btn) {
-            const container = btn.parentElement;
-            const input = container.querySelector('input');
-            if (!input) return;
-
-            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-            input.setAttribute('type', type);
-
-            const eyeIcon = btn.querySelector('.eye-icon');
-            const eyeOffIcon = btn.querySelector('.eye-off-icon');
-
-            if (eyeIcon && eyeOffIcon) {
-                if (type === 'text') {
-                    eyeIcon.classList.add('hidden');
-                    eyeOffIcon.classList.remove('hidden');
-                } else {
-                    eyeIcon.classList.remove('hidden');
-                    eyeOffIcon.classList.add('hidden');
-                }
-            }
-        };
     </script>
 </body>
 </html>
